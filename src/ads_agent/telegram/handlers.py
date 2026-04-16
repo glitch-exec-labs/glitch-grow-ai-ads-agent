@@ -28,6 +28,8 @@ async def cmd_help(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "`/insights <store> [days]` — order counts, revenue, AOV, coverage\n"
         "`/roas <store> [days]` — true ROAS vs Meta-reported, spend across all linked accounts\n"
         "`/tracking_audit <store> [days]` — LLM-picked remediation recipes for tracking gaps\n"
+        "`/ads <store> [days]` — top ads by spend, with CTR/CPC/ROAS per ad\n"
+        "`/creative <ad_id> [store]` — structured critique of one ad's creative (Gemini vision)\n"
         "`/stores` — list configured stores\n"
         "`/help` — this message"
     )

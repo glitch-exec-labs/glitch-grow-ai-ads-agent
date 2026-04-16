@@ -13,7 +13,25 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-16
 
-- **09:30 UTC** — auto-sync: 2026-04-16 09:30 UTC (`f4e12dd`) — 11 files
+- **10:30 UTC** — auto-sync: 2026-04-16 10:30 UTC (`c5cb5f1`) — 6 files
+        M	src/ads_agent/agent/graph.py
+        M	src/ads_agent/agent/llm.py
+        A	src/ads_agent/agent/nodes/ads_leaderboard.py
+        A	src/ads_agent/agent/nodes/creative_critique.py
+        M	src/ads_agent/meta/graph_client.py
+        ... (+1 more)
+- **09:37 UTC** — Move store registry + ad-account map to env-loaded JSON config (`da63237`) — 5 files
+    Committed code now carries only placeholder stores; real client data lives
+    in .env via STORES_JSON and STORE_AD_ACCOUNTS_JSON (gitignored). Anyone can
+    clone this repo, drop their own JSON into .env, and run against their own
+    Shopify fleet without code edits.
+    Also:
+    - Add LLM fallback chain (Gemini Pro → Flash → OpenAI) so tracking_audit
+      survives Gemini 503s
+    - Add OPENAI_API_KEY + POSTHOG_PERSONAL_API_KEY to Settings
+    - Expand .env.example to document the full runtime-config surface
+    Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+- **09:30 UTC** — auto-sync: 2026-04-16 09:30 UTC (`09afc87`) — 12 files
         M	src/ads_agent/agent/graph.py
         M	src/ads_agent/agent/llm.py
         M	src/ads_agent/agent/nodes/pull_insights.py

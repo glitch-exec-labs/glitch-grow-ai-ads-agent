@@ -80,3 +80,138 @@ async def account_spend(ad_account_id: str, days: int = 7) -> dict:
 async def account_info(ad_account_id: str) -> dict:
     body = await _get(ad_account_id, {"fields": "name,currency,account_status,amount_spent"})
     return body
+
+
+# ---------------------------------------------------------------------------
+# Ad-level insights + creative fetch (v1 /ads /creative /ideas substrate)
+# ---------------------------------------------------------------------------
+
+PURCHASE_ACTION_TYPES = {
+    "purchase",
+    "offsite_conversion.fb_pixel_purchase",
+    "omni_purchase",
+    "onsite_web_purchase",
+    "onsite_web_app_purchase",
+}
+
+
+def _sum_purchases(row: dict) -> tuple[int, float]:
+    purchases = 0
+    purchase_value = 0.0
+    for a in row.get("actions", []) or []:
+        if a.get("action_type") in PURCHASE_ACTION_TYPES:
+            purchases += int(a.get("value", 0) or 0)
+    for av in row.get("action_values", []) or []:
+        if av.get("action_type") in PURCHASE_ACTION_TYPES:
+            purchase_value += float(av.get("value", 0) or 0)
+    return purchases, purchase_value
+
+
+async def ads_for_account(ad_account_id: str, days: int = 7, limit: int = 200) -> list[dict]:
+    """Return joined ad metadata + ad-level insights for every ad in this account.
+
+    One row per ad, metrics over last N days.
+    """
+    # 1) ad metadata + creative
+    ads_body = await _get(
+        f"{ad_account_id}/ads",
+        {
+            "fields": "id,name,status,effective_status,created_time,creative{id,thumbnail_url,body,title,object_type,video_id}",
+            "limit": limit,
+        },
+    )
+    ad_by_id: dict[str, dict] = {a["id"]: a for a in ads_body.get("data", [])}
+
+    # 2) insights at ad level
+    if days in (7, 14, 28, 30, 90):
+        time_params = {"date_preset": f"last_{days}d"}
+    else:
+        from datetime import datetime, timedelta, timezone
+        end = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        time_params = {"time_range": f'{{"since":"{start}","until":"{end}"}}'}
+
+    insights_body = await _get(
+        f"{ad_account_id}/insights",
+        {
+            "level": "ad",
+            "fields": "ad_id,ad_name,spend,impressions,clicks,ctr,cpc,cpm,actions,action_values,account_currency",
+            "limit": limit,
+            **time_params,
+        },
+    )
+
+    results: list[dict] = []
+    for row in insights_body.get("data", []):
+        ad_id = row.get("ad_id")
+        ad = ad_by_id.get(ad_id, {})
+        purchases, purchase_value = _sum_purchases(row)
+        spend = float(row.get("spend", 0) or 0)
+        results.append({
+            "ad_account_id": ad_account_id,
+            "ad_id": ad_id,
+            "ad_name": ad.get("name") or row.get("ad_name", ""),
+            "status": ad.get("status", ""),
+            "effective_status": ad.get("effective_status", ""),
+            "creative": ad.get("creative", {}),
+            "spend": spend,
+            "currency": row.get("account_currency", "?"),
+            "impressions": int(row.get("impressions", 0) or 0),
+            "clicks": int(row.get("clicks", 0) or 0),
+            "ctr": float(row.get("ctr", 0) or 0),
+            "cpc": float(row.get("cpc", 0) or 0),
+            "cpm": float(row.get("cpm", 0) or 0),
+            "purchases": purchases,
+            "purchase_value": purchase_value,
+            "reported_roas": (purchase_value / spend) if spend > 0 else 0.0,
+        })
+    return results
+
+
+async def creative_details(ad_id: str, days: int = 7) -> dict:
+    """Return one ad's creative + last-N-days metrics (for /creative vision critique)."""
+    ad_info = await _get(
+        ad_id,
+        {"fields": "id,name,status,effective_status,adset_id,campaign_id,"
+                   "creative{id,thumbnail_url,body,title,video_id,image_url,object_type,object_story_spec,effective_object_story_id}"},
+    )
+
+    if days in (7, 14, 28, 30, 90):
+        time_params = {"date_preset": f"last_{days}d"}
+    else:
+        from datetime import datetime, timedelta, timezone
+        end = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        time_params = {"time_range": f'{{"since":"{start}","until":"{end}"}}'}
+
+    insights_body = await _get(
+        f"{ad_id}/insights",
+        {
+            "fields": "spend,impressions,clicks,ctr,cpc,cpm,frequency,reach,actions,action_values,account_currency",
+            **time_params,
+        },
+    )
+    rows = insights_body.get("data", [])
+    m = rows[0] if rows else {}
+    purchases, purchase_value = _sum_purchases(m)
+    spend = float(m.get("spend", 0) or 0)
+
+    return {
+        "ad_id": ad_id,
+        "ad_name": ad_info.get("name", ""),
+        "status": ad_info.get("status", ""),
+        "effective_status": ad_info.get("effective_status", ""),
+        "creative": ad_info.get("creative", {}),
+        "currency": m.get("account_currency", "?"),
+        "spend": spend,
+        "impressions": int(m.get("impressions", 0) or 0),
+        "clicks": int(m.get("clicks", 0) or 0),
+        "ctr": float(m.get("ctr", 0) or 0),
+        "cpc": float(m.get("cpc", 0) or 0),
+        "cpm": float(m.get("cpm", 0) or 0),
+        "frequency": float(m.get("frequency", 0) or 0),
+        "reach": int(m.get("reach", 0) or 0),
+        "purchases": purchases,
+        "purchase_value": purchase_value,
+        "reported_roas": (purchase_value / spend) if spend > 0 else 0.0,
+    }

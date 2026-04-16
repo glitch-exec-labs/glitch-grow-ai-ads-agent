@@ -94,3 +94,49 @@ async def complete(prompt: str, *, tier: str = "cheap", system: str | None = Non
 
     log.error("all LLM providers failed for tier=%s", tier)
     return f"(LLM error across all providers: {last_err})"
+
+
+async def complete_vision(
+    prompt: str,
+    image_urls: list[str],
+    *,
+    tier: str = "smart",
+    system: str | None = None,
+    max_tokens: int = 1500,
+) -> str:
+    """Multimodal completion — pass 1+ image URLs alongside a text prompt.
+
+    Image fetching is done by the provider, not us. If the URL is a Meta-CDN
+    signed URL with an expiry, make sure we pass it while it's still fresh.
+    """
+    _ensure_env()
+    import litellm
+
+    content: list[dict] = [{"type": "text", "text": prompt}]
+    for url in image_urls:
+        content.append({"type": "image_url", "image_url": {"url": url}})
+
+    messages: list[dict] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": content})
+
+    last_err: Exception | None = None
+    for model in _fallback_chain(tier):
+        try:
+            resp = await litellm.acompletion(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=0.4,
+            )
+            text = resp.choices[0].message.content or ""
+            if text.strip():
+                return text
+        except Exception as e:
+            last_err = e
+            log.warning("Vision LLM %s failed: %s", model, str(e)[:200])
+            continue
+
+    log.error("all vision LLM providers failed for tier=%s", tier)
+    return f"(Vision LLM error: {last_err})"
