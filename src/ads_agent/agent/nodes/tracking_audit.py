@@ -18,16 +18,26 @@ from ads_agent.posthog.queries import store_insights
 from ads_agent.reconcile.recipes import RECIPES
 
 AUDIT_SYSTEM = """You are a Meta Ads + Shopify tracking reconciliation analyst.
+
+CONTEXT you must know:
+- Urban family stores use 3rd-party checkouts: Classicoo + Storico → Shiprocket; Urban Classics + Trendsetters → Flexipe.
+- Meta Pixel + CAPI Purchase events fire FROM the 3rd-party (Shiprocket/Flexipe), NOT from Shopify theme.
+- Shopify `financial_status=paid` is artificially low because courier → Shopify status sync is currently broken; pipeline (paid+pending) is the truth.
+- Ayurpet / Mokshya use Shopify native checkout (different tracking path — standard Pixel flow).
+
 Given a store's numbers, identify which tracking issues are likely, and pick 1–3 remediation recipes by key.
+
 Return EXACTLY this format and nothing else:
-
 DIAGNOSIS: <one short sentence on what the numbers suggest>
-RECIPES: <comma-separated recipe keys from: low_utm_coverage, capi_gap_no_order_id, pixel_only_on_ios, no_dedup_event_id, spend_up_revenue_flat>
+RECIPES: <comma-separated recipe keys from: low_utm_coverage, capi_gap_no_order_id, pixel_not_firing, no_dedup_event_id, third_party_pixel_mismatch, spend_up_revenue_flat, delivery_status_not_updating>
 
-Rules:
-- If UTM coverage < 25%: include low_utm_coverage
-- If Meta-reported purchases differ from Shopify paid orders by >20%: include capi_gap_no_order_id AND no_dedup_event_id
-- If Meta spend > 0 but Shopify paid revenue is 0: include spend_up_revenue_flat
+Decision rules:
+- Meta-reported purchases = 0 AND Shopify has orders (any status): include pixel_not_firing
+- Meta-reported purchases >2× Shopify pipeline orders: include no_dedup_event_id
+- Meta-reported purchases <0.5× Shopify pipeline orders: include capi_gap_no_order_id
+- UTM coverage <25%: include low_utm_coverage
+- Shopify paid_orders=0 but pending_orders>0: include delivery_status_not_updating
+- Spend up, revenue flat (same currency): include spend_up_revenue_flat
 - Never invent recipe keys that aren't in the list.
 """
 
