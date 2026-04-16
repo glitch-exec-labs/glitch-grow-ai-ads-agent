@@ -13,7 +13,9 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-16
 
-- **22:15 UTC** — auto-sync: 2026-04-16 22:15 UTC (`5035fc1`) — 2 files
+- **22:30 UTC** — auto-sync: 2026-04-16 22:30 UTC (`8d048ae`) — 1 file
+        M	src/ads_agent/memory/recall.py
+- **22:15 UTC** — auto-sync: 2026-04-16 22:15 UTC (`0c414b3`) — 3 files
         M	src/ads_agent/agent/nodes/tracking_audit.py
         M	src/ads_agent/reconcile/recipes.py
 - **21:15 UTC** — auto-sync: 2026-04-16 21:15 UTC (`a7d63af`) — 2 files

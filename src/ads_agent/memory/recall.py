@@ -244,6 +244,42 @@ async def recall_prior(
         return ""
 
 
+async def _fetch_lessons(
+    conn: asyncpg.Connection, store_slug: str | None, limit: int = 3
+) -> list[dict]:
+    """Always-on recall for `kind='lesson_learned'` rows for this store.
+
+    Lessons represent persistent truths we want carried into future command
+    replies (e.g. pixel-level diagnostics, delivery-partner context). They
+    bypass MMR ranking because a) they're rare and b) always relevant for
+    their store.
+    """
+    if not store_slug:
+        return []
+    rows = await conn.fetch(
+        """SELECT id, ts,
+                  EXTRACT(EPOCH FROM (NOW() - ts)) / 86400.0 AS age_days,
+                  command, store_slug, args,
+                  LEFT(COALESCE(reply_text, ''), 600) AS reply_excerpt
+           FROM ads_agent.agent_memory
+           WHERE kind = 'lesson_learned'
+             AND store_slug = $1
+           ORDER BY ts DESC
+           LIMIT $2""",
+        store_slug, limit,
+    )
+    out = []
+    for r in rows:
+        args = _parse_jsonb(r["args"])
+        out.append({
+            "id": r["id"], "ts": r["ts"], "age_days": float(r["age_days"]),
+            "command": r["command"], "store_slug": r["store_slug"],
+            "args_summary": " ".join(f"{k}={v}" for k, v in args.items() if v not in (None, "")),
+            "reply_excerpt": r["reply_excerpt"], "score": 1.0, "vec": None,
+        })
+    return out
+
+
 async def _recall_impl(
     *,
     store_slug: str | None,
@@ -261,6 +297,8 @@ async def _recall_impl(
 
     pool = await _get_pool()
     async with pool.acquire() as conn:
+        # Two passes: (1) always-on lessons for this store, (2) MMR-ranked recent activity
+        lessons = await _fetch_lessons(conn, store_slug, limit=3)
         candidates = await _search(
             conn,
             query_vec_str=vec_str,
@@ -269,6 +307,10 @@ async def _recall_impl(
             command_hint=command,
             exclude_id=exclude_id,
         )
+        # Don't let MMR re-surface the same lesson rows (deduplicate by id)
+        lesson_ids = {l["id"] for l in lessons}
+        candidates = [c for c in candidates if c["id"] not in lesson_ids]
 
     picked = _mmr(query_vec, candidates, k=TOP_K, lam=MMR_LAMBDA)
-    return _format_block(picked)
+    # Lessons first (persistent truths), then MMR-ranked fresh activity
+    return _format_block(lessons + picked)
