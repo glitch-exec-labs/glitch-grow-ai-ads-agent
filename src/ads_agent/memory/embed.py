@@ -15,8 +15,8 @@ from ads_agent.config import settings
 
 log = logging.getLogger(__name__)
 
-GEMINI_EMBED_MODEL = "text-embedding-004"  # 768-dim
-OPENAI_EMBED_MODEL = "text-embedding-3-small"  # 1536-dim — truncated to 768 if used as fallback
+GEMINI_EMBED_MODEL = "gemini-embedding-001"  # 768-dim (v1beta accepts outputDimensionality)
+OPENAI_EMBED_MODEL = "text-embedding-3-small"  # 1536-dim native — truncated to 768 via dimensions param
 
 EMBED_DIM = 768
 MAX_INPUT_CHARS = 8000  # keep well under token limits on both providers

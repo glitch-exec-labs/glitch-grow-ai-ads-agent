@@ -20,10 +20,23 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import json
+
 import asyncpg
 
 from ads_agent.config import settings
 from ads_agent.memory.embed import composed_for_log, embed_text
+
+
+def _parse_jsonb(v) -> dict:
+    if v is None:
+        return {}
+    if isinstance(v, dict):
+        return v
+    try:
+        return json.loads(v)
+    except Exception:
+        return {}
 
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -44,7 +57,7 @@ async def main() -> None:
 
         done = 0
         for r in rows:
-            args = dict(r["args"]) if r["args"] else {}
+            args = _parse_jsonb(r["args"])
             text = composed_for_log(
                 command=r["command"],
                 store_slug=r["store_slug"],

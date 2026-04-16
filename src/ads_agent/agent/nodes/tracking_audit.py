@@ -74,7 +74,8 @@ async def tracking_audit_node(state: dict) -> dict:
         f"Purchase-count gap |meta − shopify| / shopify: {purchase_gap_pct:.1f}%\n"
     )
 
-    llm_out = await complete(numbers, tier="smart", system=AUDIT_SYSTEM, max_tokens=300)
+    # max_tokens=2500 covers Gemini 2.5's "thinking" token budget plus room for diagnosis + recipes.
+    llm_out = await complete(numbers, tier="smart", system=AUDIT_SYSTEM, max_tokens=2500)
 
     # Parse the strict format
     diagnosis = ""

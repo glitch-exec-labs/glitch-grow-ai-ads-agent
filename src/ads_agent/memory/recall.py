@@ -14,11 +14,23 @@ longer than the configured budget. On any failure, returns empty string.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 from typing import Any
 
 import asyncpg
+
+
+def _parse_jsonb(v: Any) -> dict:
+    if v is None:
+        return {}
+    if isinstance(v, dict):
+        return v
+    try:
+        return json.loads(v)
+    except Exception:
+        return {}
 
 from ads_agent.config import settings
 from ads_agent.memory.embed import EMBED_DIM, composed_for_query, embed_text
@@ -191,7 +203,7 @@ async def _search(
                     vec = [float(x) for x in vec_raw.strip("[]").split(",")]
             except Exception:
                 vec = None
-        args = dict(r["args"]) if r["args"] else {}
+        args = _parse_jsonb(r["args"])
         args_summary = " ".join(f"{k}={v}" for k, v in args.items() if v not in (None, ""))
         out.append({
             "id": r["id"],

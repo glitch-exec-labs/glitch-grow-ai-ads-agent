@@ -66,7 +66,12 @@ def _fallback_chain(tier: str) -> list[str]:
 
 
 async def complete(prompt: str, *, tier: str = "cheap", system: str | None = None, max_tokens: int = 800) -> str:
-    """One-shot text completion with automatic fallback across providers."""
+    """One-shot text completion with automatic fallback across providers.
+
+    Detects truncated Gemini responses (finish_reason=length with short output —
+    usually caused by Gemini 2.5's thinking-token consumption) and falls through
+    to the next provider instead of returning a partial answer.
+    """
     _ensure_env()
     import litellm
 
@@ -76,6 +81,7 @@ async def complete(prompt: str, *, tier: str = "cheap", system: str | None = Non
     messages.append({"role": "user", "content": prompt})
 
     last_err: Exception | None = None
+    last_partial: str = ""
     for model in _fallback_chain(tier):
         try:
             resp = await litellm.acompletion(
@@ -84,14 +90,29 @@ async def complete(prompt: str, *, tier: str = "cheap", system: str | None = Non
                 max_tokens=max_tokens,
                 temperature=0.3,
             )
-            text = resp.choices[0].message.content or ""
-            if text.strip():
+            choice = resp.choices[0]
+            text = choice.message.content or ""
+            finish = getattr(choice, "finish_reason", "unknown")
+            log.info("LLM %s finish_reason=%s len=%d", model, finish, len(text))
+
+            if not text.strip():
+                continue
+            # If the model stopped naturally (stop/end_turn), accept.
+            # If finish is length/MAX_TOKENS AND output is short, try next provider —
+            # a Gemini "thinking" burn-off leaves only a stump.
+            if finish in ("stop", "end_turn", "STOP"):
                 return text
+            if len(text) >= 300:
+                return text
+            log.warning("LLM %s returned short reply (%d chars) finish=%s; trying next", model, len(text), finish)
+            last_partial = text
         except Exception as e:
             last_err = e
             log.warning("LLM %s failed: %s", model, str(e)[:200])
             continue
 
+    if last_partial:
+        return last_partial
     log.error("all LLM providers failed for tier=%s", tier)
     return f"(LLM error across all providers: {last_err})"
 
