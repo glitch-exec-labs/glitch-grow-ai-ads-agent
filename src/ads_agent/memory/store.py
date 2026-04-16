@@ -50,13 +50,14 @@ async def log_turn(
 ) -> int | None:
     """Insert one row into ads_agent.agent_memory. Returns the new id or None on failure.
 
-    All arguments are keyword-only to prevent positional mistakes. Never raises
-    — failures are logged and swallowed since this is always a post-reply write.
+    Fire-and-forget embedding is scheduled after the insert so it doesn't
+    delay any callers. All errors are logged and swallowed.
     """
+    row_id: int | None = None
     try:
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            row_id: int = await conn.fetchval(
+            row_id = await conn.fetchval(
                 """
                 INSERT INTO ads_agent.agent_memory
                     (user_tg_id, store_slug, command, args, reply_text, key_metrics, agent_reasoning, kind)
@@ -73,10 +74,47 @@ async def log_turn(
                 agent_reasoning,
                 kind,
             )
-            return row_id
     except Exception:
         log.exception("log_turn failed (command=%s store=%s)", command, store_slug)
         return None
+
+    # Fire-and-forget embedding: compute + UPDATE without awaiting
+    if row_id is not None:
+        asyncio.ensure_future(
+            _embed_and_update(row_id, command=command, store_slug=store_slug,
+                              args=args, reply_text=reply_text)
+        )
+    return row_id
+
+
+async def _embed_and_update(
+    row_id: int,
+    *,
+    command: str,
+    store_slug: str | None,
+    args: dict[str, Any] | None,
+    reply_text: str,
+) -> None:
+    """Compute an embedding for the row and UPDATE the embedding column."""
+    from ads_agent.memory.embed import composed_for_log, embed_text
+
+    text = composed_for_log(command=command, store_slug=store_slug, args=args, reply_text=reply_text)
+    vec = await embed_text(text)
+    if vec is None:
+        log.warning("embed skipped for row %d (no embedding available)", row_id)
+        return
+    try:
+        # pgvector accepts a string literal "[x,y,z]" for the vector cast
+        vec_str = "[" + ",".join(f"{v:.7f}" for v in vec) + "]"
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE ads_agent.agent_memory SET embedding = $1::vector WHERE id = $2",
+                vec_str,
+                row_id,
+            )
+    except Exception:
+        log.exception("embed update failed for row %d", row_id)
 
 
 def fire_and_forget(

@@ -110,12 +110,14 @@ async def creative_critique_node(state: dict) -> dict:
 
     family_ctx = FAMILY_CONTEXT.get(slug, "No specific brand family context available — judge by general e-commerce standards.")
 
+    prior = state.get("prior_context", "") or ""
     prompt = (
-        f"{family_ctx}\n\n"
-        f"{metrics_block}\n"
-        f"Title: {title}\n"
-        f"Body copy (verbatim):\n\"\"\"\n{body}\n\"\"\"\n\n"
-        "Produce the structured critique now."
+        (f"{prior}\n\n" if prior else "")
+        + f"{family_ctx}\n\n"
+        + f"{metrics_block}\n"
+        + f"Title: {title}\n"
+        + f"Body copy (verbatim):\n\"\"\"\n{body}\n\"\"\"\n\n"
+        + "Produce the structured critique now. If <prior_context> references past critiques of this or similar ads, note any changes (metric drift, fatigue signals) and avoid repeating unchanged points."
     )
 
     images = [thumbnail] if thumbnail else []

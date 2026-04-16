@@ -100,12 +100,15 @@ async def ideas_node(state: dict) -> dict:
         "Generate briefs that extend the winning patterns while testing 2 new angles."
     )
 
+    prior = state.get("prior_context", "") or ""
     prompt = (
-        f"BRAND FAMILY CONTEXT:\n{family_ctx}\n\n"
-        f"STORE: {store.brand} ({store.shop_domain}) · {store.currency}\n\n"
-        f"TOP 3 WINNERS (last {days}d):\n{winners_block}\n\n"
-        f"GOAL: {goal_hint}\n\n"
-        f"Produce the 5 numbered briefs now."
+        (f"{prior}\n\n" if prior else "")
+        + f"BRAND FAMILY CONTEXT:\n{family_ctx}\n\n"
+        + f"STORE: {store.brand} ({store.shop_domain}) · {store.currency}\n\n"
+        + f"TOP 3 WINNERS (last {days}d):\n{winners_block}\n\n"
+        + f"GOAL: {goal_hint}\n\n"
+        + "Produce the 5 numbered briefs now. "
+        + "If <prior_context> shows previous /ideas runs for this store, do NOT repeat angles that were already proposed — extend or diverge."
     )
 
     if thumbnails:

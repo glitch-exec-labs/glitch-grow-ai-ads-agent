@@ -13,7 +13,14 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-16
 
-- **19:45 UTC** — auto-sync: 2026-04-16 19:45 UTC (`6eb6092`) — 5 files
+- **20:15 UTC** — auto-sync: 2026-04-16 20:15 UTC (`01228ad`) — 8 files
+        A	ops/scripts/backfill_embeddings.py
+        M	src/ads_agent/agent/graph.py
+        M	src/ads_agent/agent/nodes/creative_critique.py
+        M	src/ads_agent/agent/nodes/ideas.py
+        M	src/ads_agent/agent/nodes/tracking_audit.py
+        ... (+3 more)
+- **19:45 UTC** — auto-sync: 2026-04-16 19:45 UTC (`1572d2f`) — 6 files
         A	ops/scripts/migrate_agent_memory.sql
         A	src/ads_agent/memory/__init__.py
         A	src/ads_agent/memory/store.py

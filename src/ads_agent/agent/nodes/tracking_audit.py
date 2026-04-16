@@ -59,7 +59,10 @@ async def tracking_audit_node(state: dict) -> dict:
     else:
         purchase_gap_pct = 100.0 if total_meta_purchases > 0 else 0.0
 
+    prior = state.get("prior_context", "") or ""
     numbers = (
+        f"{prior}\n\n" if prior else ""
+    ) + (
         f"Store: {store.slug} ({store.brand})\n"
         f"Window: last {days} days\n"
         f"Shopify paid orders: {shopify.paid_orders}\n"
