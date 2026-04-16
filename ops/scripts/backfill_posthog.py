@@ -51,7 +51,15 @@ query orders($query: String!, $first: Int!, $after: String) {
         name
         createdAt
         displayFinancialStatus
+        displayFulfillmentStatus
         currentTotalPriceSet { shopMoney { amount currencyCode } }
+        customer { id email }
+        customerJourneySummary {
+          firstVisit {
+            utmParameters { source medium campaign content term }
+            referrerUrl
+          }
+        }
         lineItems(first: 50) {
           edges {
             node { title sku quantity originalUnitPriceSet { shopMoney { amount } } }
@@ -64,14 +72,24 @@ query orders($query: String!, $first: Int!, $after: String) {
   }
 }
 """
-# Note: customer + customerJourneySummary fields require read_customers scope,
-# which is not granted on the baseline write_orders Custom Apps yet. Once scopes
-# bump in v1, add those fields back to enrich PostHog person-stitching + UTM attribution.
 
 
 def _node_to_order(node: dict, currency: str) -> dict:
     money = node.get("currentTotalPriceSet", {}).get("shopMoney", {})
     order_id = node["id"].replace("gid://shopify/Order/", "")
+
+    customer = node.get("customer") or {}
+    customer_id = str(customer.get("id", "")).replace("gid://shopify/Customer/", "") or order_id
+    email = customer.get("email", "")
+
+    utm_raw = ((node.get("customerJourneySummary") or {}).get("firstVisit") or {}).get("utmParameters") or {}
+    utm = {k: v for k, v in {
+        "source": utm_raw.get("source"),
+        "medium": utm_raw.get("medium"),
+        "campaign": utm_raw.get("campaign"),
+        "content": utm_raw.get("content"),
+        "term": utm_raw.get("term"),
+    }.items() if v}
 
     line_items = [
         {
@@ -86,15 +104,14 @@ def _node_to_order(node: dict, currency: str) -> dict:
     return {
         "order_id": order_id,
         "order_name": node.get("name", ""),
+        "created_at": node.get("createdAt"),
         "value": float(money.get("amount", 0)),
         "currency": money.get("currencyCode", currency),
-        # Until read_customers is granted, use order_id as distinct_id. PostHog
-        # can merge with a customer-level identity later via alias() once v1 lands.
-        "customer_id": order_id,
-        "email": "",
+        "customer_id": customer_id,
+        "email": email,
         "financial_status": node.get("displayFinancialStatus", "").lower(),
-        "fulfillment_status": "unknown",
-        "utm": {},
+        "fulfillment_status": node.get("displayFulfillmentStatus", "").lower(),
+        "utm": utm,
         "line_items": line_items,
         "tags": node.get("tags", ""),
         "source_name": node.get("sourceName", ""),
@@ -115,7 +132,9 @@ async def backfill_store(store_slug: str, days: int) -> int:
     gql = ShopifyAdminClient(store.shop_domain, sess.access_token)
     from datetime import timedelta
     since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
-    query = f"created_at:>={since} financial_status:paid"
+    # Capture all orders regardless of financial_status — filtering happens in
+    # PostHog queries (some stores are COD-heavy, orders stay PENDING for days).
+    query = f"created_at:>={since}"
     cursor = None
     total = 0
 
@@ -128,11 +147,24 @@ async def backfill_store(store_slug: str, days: int) -> int:
 
         for edge in edges:
             order = _node_to_order(edge["node"], store.currency)
+            # Map Shopify financial_status → our event name so downstream queries
+            # can filter by actual lifecycle state rather than a blanket "order_paid".
+            fs = order.get("financial_status", "")
+            event_name = {
+                "paid": "order_paid",
+                "refunded": "order_refunded",
+                "partially_refunded": "order_partially_refunded",
+                "voided": "order_voided",
+                "pending": "order_pending",
+                "authorized": "order_authorized",
+                "partially_paid": "order_partially_paid",
+            }.get(fs, "order_created")
             capture_order_event(
-                "order_paid",
+                event_name,
                 shop_domain=store.shop_domain,
                 store_slug=store.slug,
                 order=order,
+                timestamp=order.get("created_at"),
             )
             total += 1
 

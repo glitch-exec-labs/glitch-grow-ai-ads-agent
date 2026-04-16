@@ -35,6 +35,7 @@ def capture_order_event(
     shop_domain: str,
     store_slug: str,
     order: dict,
+    timestamp: str | None = None,
 ) -> None:
     """Fire a Shopify order lifecycle event to PostHog.
 
@@ -56,6 +57,7 @@ def capture_order_event(
         "order_name": order.get("order_name", ""),
         "value": order.get("value", 0),
         "currency": order.get("currency", ""),
+        "email": order.get("email", ""),
         "financial_status": order.get("financial_status", ""),
         "fulfillment_status": order.get("fulfillment_status", ""),
         "source_name": order.get("source_name", ""),
@@ -73,7 +75,14 @@ def capture_order_event(
         props["line_items"] = json.dumps(li)
         props["line_item_count"] = len(li)
 
+    kwargs = {"distinct_id": distinct_id, "event": event, "properties": props}
+    if timestamp:
+        from datetime import datetime
+        try:
+            kwargs["timestamp"] = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            pass
     try:
-        client().capture(distinct_id=distinct_id, event=event, properties=props)
+        client().capture(**kwargs)
     except Exception:
         log.exception("PostHog capture failed event=%s order_id=%s", event, order.get("order_id"))

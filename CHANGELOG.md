@@ -13,7 +13,10 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-16
 
-- **07:45 UTC** — auto-sync: 2026-04-16 07:45 UTC (`2bb2aad`) — 1 file
+- **08:30 UTC** — auto-sync: 2026-04-16 08:30 UTC (`9d0ce50`) — 2 files
+        M	ops/scripts/backfill_posthog.py
+        M	src/ads_agent/posthog/client.py
+- **07:45 UTC** — auto-sync: 2026-04-16 07:45 UTC (`7ed7770`) — 2 files
         M	src/ads_agent/config.py
 - **07:30 UTC** — auto-sync: 2026-04-16 07:30 UTC (`8ad445a`) — 3 files
         M	src/ads_agent/config.py
