@@ -5,8 +5,10 @@ Single source of truth for:
   - Required Shopify scope matrix per Custom App
   - Env-derived runtime settings (DB, Meta, PostHog, Telegram, LLM)
 
-Mirrors the store table in /home/support/multi-store-theme-manager/STORES.md.
-If STORES.md changes, update STORES below in the same commit.
+STORES below is a TEMPLATE with example values. In your deployment:
+  1. Replace every shop_domain, meta_ad_account, and slug with your real values.
+  2. Alternatively, load STORES from an env-var JSON blob so nothing is hard-coded.
+  3. Never commit real myshopify domains or Meta act_... IDs to a public repo.
 """
 from __future__ import annotations
 
@@ -31,51 +33,35 @@ class Store:
     notes: str = ""
 
 
-# Keep in sync with /home/support/multi-store-theme-manager/STORES.md
+# Example store registry — replace with your actual stores before deploying.
+# Each entry maps a short slug (used in Telegram commands) to a Shopify
+# storefront and its linked Meta Ads account.
 STORES: tuple[Store, ...] = (
     Store(
-        slug="urban",
-        brand="Urban Classics",
-        shop_domain="f51039.myshopify.com",
-        custom_app="urban",
-        meta_ad_account="act_1765937727381511",
-        currency="CAD",
+        slug="store-a",
+        brand="Store A (Example)",
+        shop_domain="your-store-a.myshopify.com",
+        custom_app="store-a",
+        meta_ad_account="act_REPLACE_WITH_YOUR_ACCOUNT_ID",
+        currency="USD",
     ),
     Store(
-        slug="ayurpet-ind",
-        brand="Ayurpet (India)",
-        shop_domain="1ygbmd-pr.myshopify.com",
-        custom_app="ayurpet-ind",
-        meta_ad_account="act_654879327196107",
+        slug="store-b-india",
+        brand="Store B (India)",
+        shop_domain="your-store-b.myshopify.com",
+        custom_app="store-b-ind",
+        meta_ad_account="act_REPLACE_WITH_YOUR_ACCOUNT_ID",
         currency="INR",
-        notes="India-market sales. Shares ad account with Ayurpet Global.",
+        notes="India-market sales. Shares ad account with Store B Global.",
     ),
     Store(
-        slug="ayurpet-global",
-        brand="Ayurpet (Global)",
-        shop_domain="2684sq-mt.myshopify.com",
-        custom_app="ayurpet",
-        meta_ad_account="act_654879327196107",
+        slug="store-b-global",
+        brand="Store B (Global)",
+        shop_domain="your-store-b-global.myshopify.com",
+        custom_app="store-b",
+        meta_ad_account="act_REPLACE_WITH_YOUR_ACCOUNT_ID",
         currency="INR",
         notes="Global storefront. Same ad account as India; ROAS must be reconciled across both.",
-    ),
-    Store(
-        slug="classicoo-1",
-        brand="Classicoo (?)",
-        shop_domain="52j1ga-hz.myshopify.com",
-        custom_app="classicoo",
-        meta_ad_account="act_1231977889107681",
-        currency="CAD",
-        notes="Role unconfirmed per STORES.md.",
-    ),
-    Store(
-        slug="classicoo-2",
-        brand="Classicoo (?)",
-        shop_domain="5u7mdi-ap.myshopify.com",
-        custom_app="classicoo",
-        meta_ad_account=None,
-        currency="CAD",
-        notes="Role unconfirmed; ad account TBD per STORES.md.",
     ),
 )
 
@@ -105,7 +91,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Postgres (auth-hub Session table, read-only role)
-    postgres_insights_ro_url: str = "postgresql://insights_ro:changeme@127.0.0.1:5432/shopify_app"
+    postgres_insights_ro_url: str = "postgresql://insights_ro:changeme@127.0.0.1:5432/your_db_name"
 
     # Shopify per-app webhook HMAC secrets — JSON map { custom_app_slug: secret }
     shopify_webhook_secrets: str = "{}"
@@ -131,7 +117,7 @@ class Settings(BaseSettings):
     vertex_location: str = "us-central1"
 
     # Runtime
-    public_base_url: str = "https://insights.glitchexecutor.com"
+    public_base_url: str = "https://ads.yourdomain.com"
     log_level: str = "INFO"
 
     @property

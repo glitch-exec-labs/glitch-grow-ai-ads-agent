@@ -13,7 +13,7 @@ RECIPES: dict[str, str] = {
         "cart.js forms strip the URL)."
     ),
     "capi_gap_no_order_id": (
-        "Meta is not receiving order_id on Purchase events. Edit /var/www/glitchexecutor/capi_server.py "
+        "Meta is not receiving order_id on Purchase events. Update your CAPI server "
         "to include custom_data.order_id AND a shared event_id matching the client-side Pixel. "
         "Without this, reconciliation falls back to fuzzy matching (lower confidence)."
     ),

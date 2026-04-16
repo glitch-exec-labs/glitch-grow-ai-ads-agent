@@ -1,12 +1,18 @@
-"""Read-only access to the multi-store-theme-manager Prisma Session table.
+"""Read-only access to the Shopify auth-hub Prisma Session table.
 
-DB: 127.0.0.1:5432/shopify_app
-Role: insights_ro (SELECT only on "Session") — must be created manually:
+This module reads the `Session` table written by the Shopify auth hub
+(a Remix/Shopify-CLI app using @shopify/shopify-app-remix and Prisma with
+PrismaSessionStorage). The agent accesses it via a dedicated read-only DB
+role so it cannot modify auth state.
 
-    CREATE USER insights_ro WITH PASSWORD '...';
-    GRANT CONNECT ON DATABASE shopify_app TO insights_ro;
+Setup the read-only role once:
+
+    CREATE USER insights_ro WITH PASSWORD 'choose_a_strong_password';
+    GRANT CONNECT ON DATABASE your_db TO insights_ro;
     GRANT USAGE ON SCHEMA public TO insights_ro;
     GRANT SELECT ON "Session" TO insights_ro;
+
+Then set POSTGRES_INSIGHTS_RO_URL in .env.
 """
 from __future__ import annotations
 

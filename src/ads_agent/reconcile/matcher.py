@@ -4,8 +4,8 @@ Strategy:
   1. Exact join on order_id where CAPI was configured to send it.
   2. Fuzzy fallback: value within 1%, time within 10min, same ad account.
 
-v0 stub. Full impl after /var/www/glitchexecutor/capi_server.py is updated to
-include order_id + shared event_id (v1 prerequisite per plan).
+v0 stub. Full impl in v1 once your CAPI server is updated to include
+order_id + shared event_id in Purchase payloads (v1 prerequisite).
 """
 from __future__ import annotations
 

@@ -10,10 +10,10 @@ def test_version_set():
 
 
 def test_store_registry_resolves_by_slug_and_domain():
-    assert get_store("urban") is not None
-    assert get_store("f51039.myshopify.com") is not None
-    assert get_store("ayurpet-ind").meta_ad_account == "act_654879327196107"
-    assert get_store("ayurpet-global").meta_ad_account == "act_654879327196107"
+    assert get_store("store-a") is not None
+    assert get_store("your-store-a.myshopify.com") is not None
+    # stores sharing an ad account return the same act_ string
+    assert get_store("store-b-india").meta_ad_account == get_store("store-b-global").meta_ad_account
     assert get_store("does-not-exist") is None
 
 

@@ -4,7 +4,7 @@ Runs as its own systemd service on the VM (NOT inside Cloud Run), because
 reconciliation / MCP calls need localhost access to 127.0.0.1:3103 and
 127.0.0.1:5432.
 
-Use webhook mode behind nginx (insights.glitchexecutor.com -> 127.0.0.1:3110).
+Use webhook mode behind nginx (your PUBLIC_BASE_URL -> 127.0.0.1:3110 or whatever local port you run on).
 For v0 local dev, long-poll mode is fine; flip via env.
 """
 from __future__ import annotations

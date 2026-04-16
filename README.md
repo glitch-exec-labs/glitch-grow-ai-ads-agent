@@ -40,6 +40,6 @@ src/ads_agent/
   scheduler/          # daily digest / nightly reconciliation entrypoints
 ops/
   systemd/            # glitch-ads-bot.service
-  nginx/              # insights.glitchexecutor.com vhost
+  nginx/              # example nginx vhost (swap in your own domain)
   scripts/            # bootstrap_posthog.py, register_webhooks.py
 ```
