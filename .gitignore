@@ -1,0 +1,37 @@
+# Environments / secrets
+.env
+.env.*
+!.env.example
+*.pem
+service-account*.json
+google-credentials*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Data / runtime
+data/
+*.db
+*.sqlite*
+logs/
+*.log
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Docker override
+docker-compose.override.yml
