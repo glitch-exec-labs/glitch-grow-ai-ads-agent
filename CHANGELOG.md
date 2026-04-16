@@ -13,7 +13,16 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-16
 
-- **05:45 UTC** — auto-sync: 2026-04-16 05:45 UTC (`dea7fb4`) — 39 files
+- **06:00 UTC** — auto-sync: 2026-04-16 06:00 UTC (`74567bc`) — 2 files
+        A	LICENSE
+        M	README.md
+- **05:54 UTC** — Sanitize for public release: remove all client-specific data (`ba18b63`) — 8 files
+    Replace real myshopify domains, Meta act_... account IDs, internal
+    hostnames, and filesystem paths with generic placeholder values so
+    the repo can serve as a public showcase template.
+    All actual store/account mappings live in .env on the server (gitignored).
+    Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+- **05:45 UTC** — auto-sync: 2026-04-16 05:45 UTC (`7559843`) — 40 files
         A	.env.example
         A	.gitignore
         A	Dockerfile
