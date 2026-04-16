@@ -92,6 +92,20 @@ async def telegram_webhook(request: Request) -> dict:
 async def agent_run(request: Request) -> dict:
     body = await request.json()
     from ads_agent.agent.graph import build_graph
+    from ads_agent.memory.store import fire_and_forget as log_turn
+
     graph = build_graph()
     state = await graph.ainvoke(body)
-    return {"reply": state.get("reply_text", ""), "state": state}
+    reply = state.get("reply_text", "")
+
+    # Log the turn so curl-driven tests also accumulate in agent_memory.
+    # user_tg_id=None → these show up as "non-Telegram / API" calls.
+    log_turn(
+        command=str(body.get("command", "unknown")),
+        store_slug=body.get("store_slug") or None,
+        user_tg_id=None,
+        args={k: v for k, v in body.items() if k not in ("command", "store_slug")},
+        reply_text=reply,
+        key_metrics=state.get("orders_summary") if isinstance(state.get("orders_summary"), dict) else None,
+    )
+    return {"reply": reply, "state": state}

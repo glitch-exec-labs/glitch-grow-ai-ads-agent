@@ -7,6 +7,7 @@ from telegram.ext import ContextTypes
 
 from ads_agent.agent.graph import build_graph
 from ads_agent.config import STORES, get_store
+from ads_agent.memory.store import fire_and_forget as log_turn
 from ads_agent.telegram.auth import is_admin
 
 _graph = build_graph()
@@ -59,13 +60,28 @@ async def _run_and_reply(update: Update, command: str, days_default: int, args: 
     # Placeholder "working..." so the user sees activity during LLM calls
     status_msg = await update.message.reply_text(f"Running /{command} {slug} {days}d…")
 
+    state: dict = {}
     try:
         state = await _graph.ainvoke({"command": command, "store_slug": slug, "days": days})
         reply = state.get("reply_text", "(no reply)")
     except Exception as e:
         reply = f"error: {e}"
 
-    await status_msg.edit_text(reply, parse_mode=ParseMode.MARKDOWN)
+    try:
+        await status_msg.edit_text(reply, parse_mode=ParseMode.MARKDOWN)
+    except Exception:
+        # Markdown parse fail → send as plain so the reply still lands
+        await status_msg.edit_text(reply)
+
+    # Fire-and-forget memory log (post-reply so it never delays user-visible output)
+    log_turn(
+        command=command,
+        store_slug=slug,
+        user_tg_id=update.effective_user.id if update.effective_user else None,
+        args={"days": days},
+        reply_text=reply,
+        key_metrics=state.get("orders_summary") if isinstance(state.get("orders_summary"), dict) else None,
+    )
 
 
 async def cmd_insights(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -127,3 +143,11 @@ async def cmd_creative(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await status_msg.edit_text(reply, parse_mode=ParseMode.MARKDOWN)
     except Exception:
         await status_msg.edit_text(reply)
+
+    log_turn(
+        command="creative",
+        store_slug=slug or None,
+        user_tg_id=update.effective_user.id if update.effective_user else None,
+        args={"ad_id": ad_id},
+        reply_text=reply,
+    )
