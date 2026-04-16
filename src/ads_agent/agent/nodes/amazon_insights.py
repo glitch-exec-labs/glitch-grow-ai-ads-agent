@@ -80,20 +80,31 @@ async def amazon_insights_node(state: dict) -> dict:
         by_acct: dict[str, dict] = {}
         for r in ads_rows:
             k = r["_marketplace"]
-            b = by_acct.setdefault(k, {"spend": 0.0, "sales": 0.0, "impr": 0, "clicks": 0, "orders": 0})
-            b["spend"] += float(r.get("Spend", 0) or 0)
+            b = by_acct.setdefault(k, {"cost": 0.0, "sales": 0.0, "impr": 0, "clicks": 0, "orders": 0})
+            # Supermetrics Amazon Ads field is "Cost" (not "Spend")
+            b["cost"] += float(r.get("Cost", 0) or 0)
             b["sales"] += float(r.get("Sales", 0) or 0)
             b["impr"] += int(r.get("Impressions", 0) or 0)
             b["clicks"] += int(r.get("Clicks", 0) or 0)
             b["orders"] += int(r.get("Orders", 0) or 0)
-        lines.append("*Amazon Ads (per account)*")
-        for k, b in by_acct.items():
+
+        # Sort by cost desc so top-spend markets surface first
+        ordered = sorted(by_acct.items(), key=lambda kv: kv[1]["cost"], reverse=True)
+        # Family totals
+        total_cost = sum(b["cost"] for _, b in ordered)
+        total_sales = sum(b["sales"] for _, b in ordered)
+        total_orders = sum(b["orders"] for _, b in ordered)
+        family_roas = (total_sales / total_cost) if total_cost > 0 else 0
+        lines.append(f"*Amazon Ads (per market, top-spend first)*")
+        lines.append(f"  total: spend {total_cost:,.2f} · sales {total_sales:,.2f} · ROAS {family_roas:.2f}x · orders {total_orders}")
+        for k, b in ordered:
+            if b["cost"] == 0 and b["orders"] == 0:
+                continue  # skip markets with no activity
             ctr = (b["clicks"] / b["impr"] * 100) if b["impr"] else 0
-            roas = (b["sales"] / b["spend"]) if b["spend"] > 0 else 0
+            roas = (b["sales"] / b["cost"]) if b["cost"] > 0 else 0
             lines.append(
-                f"• {k}: spend {b['spend']:,.2f} · sales {b['sales']:,.2f} · "
-                f"ROAS {roas:.2f}x · orders {b['orders']} · CTR {ctr:.2f}% · "
-                f"{b['impr']:,} impressions · {b['clicks']:,} clicks"
+                f"• {k}: spend {b['cost']:,.2f} · sales {b['sales']:,.2f} · "
+                f"ROAS {roas:.2f}x · orders {b['orders']} · CTR {ctr:.2f}%"
             )
 
     if len(lines) == 2:  # header + empty

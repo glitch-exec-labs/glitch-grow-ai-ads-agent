@@ -103,19 +103,25 @@ async def query(
     end_date: str | None = None,
     max_rows: int = 1000,
     extra: dict | None = None,
-) -> dict:
-    """Run a Supermetrics data query. Returns the raw `data` block.
+    timeout_s: float = 180.0,
+) -> list[dict]:
+    """Run a Supermetrics data query. Returns a list of row dicts.
 
-    - fields: either list of field names, or comma-separated string.
-    - date_range_type: last_7_days / last_30_days / last_90_days / custom.
-      For custom, pass start_date + end_date in YYYY-MM-DD.
+    Amazon Ads queries hit Amazon's async report API and can take 60-180s.
+    Supermetrics waits on our connection and then streams results back.
+
+    Query params:
+      ds_login = the per-login identifier `dsl_*` (NOT ds_user — that was our
+        earlier misread of the API).
+      fields = list or comma-separated string of field IDs.
+      date_range_type = last_7_days / last_30_days / last_90_days / custom.
     """
     if isinstance(fields, list):
         fields = ",".join(fields)
 
     q: dict = {
         "ds_id": ds_id,
-        "ds_user": login_id,
+        "ds_login": login_id,
         "ds_accounts": account_id,
         "fields": fields,
         "date_range_type": date_range_type,
@@ -133,7 +139,7 @@ async def query(
     headers = {"Authorization": f"Bearer {_api_key()}"}
     url = f"{BASE}/query/data/json?json={json_param}"
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=timeout_s) as client:
         r = await client.get(url, headers=headers)
     try:
         body = r.json()
@@ -143,14 +149,22 @@ async def query(
         raise SupermetricsError(
             f"{body['error'].get('code')} — {body['error'].get('description','')}"
         )
-    return body.get("data", {})
+
+    # Supermetrics response shape: data is either {"result": [...]} or a list directly
+    # depending on endpoint variant. Normalize to a list of dicts here.
+    data = body.get("data")
+    if isinstance(data, dict):
+        return data.get("result", [])
+    if isinstance(data, list):
+        return data
+    return []
 
 
 # ---------------------------------------------------------------------------
 # High-level helpers per store
 # ---------------------------------------------------------------------------
 
-# Canonical Amazon Seller Central fields we care about
+# Canonical Amazon Seller Central (ASELL) fields — verified valid 2026-04-16
 DEFAULT_SELLER_FIELDS = [
     "Date",
     "UnitsOrdered",
@@ -160,12 +174,13 @@ DEFAULT_SELLER_FIELDS = [
     "UnitSessionPercentage",
 ]
 
-# Canonical Amazon Ads fields
+# Canonical Amazon Ads (AA) fields — verified valid 2026-04-16
+# Note: "Cost" not "Spend"; "UnitsOrdered" not "UnitsSold" (Seller term).
 DEFAULT_ADS_FIELDS = [
     "Date",
     "Impressions",
     "Clicks",
-    "Spend",
+    "Cost",
     "Sales",
     "Orders",
     "ACOS",
@@ -186,14 +201,14 @@ async def seller_stats(
     date_range_type = f"last_{days}_days" if days in (7, 14, 30, 90) else "custom"
     rows: list[dict] = []
     for acct in accounts:
-        data = await query(
+        result_rows = await query(
             ds_id="ASELL",
             login_id=acct["login_id"],
             account_id=acct["account_id"],
             fields=DEFAULT_SELLER_FIELDS,
             date_range_type=date_range_type,
         )
-        for r in data.get("result", []):
+        for r in result_rows:
             r["_marketplace"] = acct.get("name", acct["account_id"])
             r["_account_id"] = acct["account_id"]
             rows.append(r)
@@ -213,14 +228,14 @@ async def ads_stats(
     date_range_type = f"last_{days}_days" if days in (7, 14, 30, 90) else "custom"
     rows: list[dict] = []
     for acct in accounts:
-        data = await query(
+        result_rows = await query(
             ds_id=acct["ds_id"],
             login_id=acct["login_id"],
             account_id=acct["account_id"],
             fields=DEFAULT_ADS_FIELDS,
             date_range_type=date_range_type,
         )
-        for r in data.get("result", []):
+        for r in result_rows:
             r["_marketplace"] = acct.get("name", acct["account_id"])
             r["_account_id"] = acct["account_id"]
             rows.append(r)
