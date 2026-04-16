@@ -130,9 +130,17 @@ async def complete_vision(
                 max_tokens=max_tokens,
                 temperature=0.4,
             )
-            text = resp.choices[0].message.content or ""
-            if text.strip():
-                return text
+            choice = resp.choices[0]
+            text = choice.message.content or ""
+            finish = getattr(choice, "finish_reason", "unknown")
+            log.info("Vision LLM %s finish_reason=%s len=%d", model, finish, len(text))
+            # If model stopped for a non-natural reason (safety, length at low tokens),
+            # fall through to the next provider rather than returning a truncated reply.
+            if text.strip() and finish not in ("content_filter", "safety"):
+                # Accept partial if it's at least substantive; else try next model
+                if len(text) >= 400 or finish in ("stop", "end_turn", "STOP", "MAX_TOKENS"):
+                    return text
+                log.warning("Vision LLM %s returned short reply (%d chars) finish=%s; trying next", model, len(text), finish)
         except Exception as e:
             last_err = e
             log.warning("Vision LLM %s failed: %s", model, str(e)[:200])

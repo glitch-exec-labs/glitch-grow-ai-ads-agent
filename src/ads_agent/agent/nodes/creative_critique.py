@@ -122,9 +122,10 @@ async def creative_critique_node(state: dict) -> dict:
     if not images:
         # Fallback to text-only if no thumbnail
         from ads_agent.agent.llm import complete
-        out = await complete(prompt, tier="smart", system=CRITIQUE_SYSTEM, max_tokens=1200)
+        out = await complete(prompt, tier="smart", system=CRITIQUE_SYSTEM, max_tokens=3000)
     else:
-        out = await complete_vision(prompt, images, tier="smart", system=CRITIQUE_SYSTEM, max_tokens=1200)
+        # max_tokens=3000 covers Gemini 2.5's "thinking" token budget plus ~1500 output chars.
+        out = await complete_vision(prompt, images, tier="smart", system=CRITIQUE_SYSTEM, max_tokens=3000)
 
     header = (
         f"*Creative critique · ad `{ad_id}`*\n"
