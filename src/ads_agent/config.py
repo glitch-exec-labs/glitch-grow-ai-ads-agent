@@ -92,7 +92,19 @@ STORES: tuple[Store, ...] = (
         notes="Global storefront. Same ad account as India; reconcile ROAS across both.",
     ),
     # --- Mokshya (standalone) ---
-    # NOTE: placeholder entry — update shop_domain and custom_app once credentials issued.
+    # Uses the DEFAULT Shopify app credentials (SHOPIFY_API_KEY / SHOPIFY_API_SECRET in
+    # auth-hub .env), not a per-client Custom App. We still key the webhook HMAC secret
+    # under custom_app="mokshya" for symmetry; the .env map points that slug at the
+    # default SHOPIFY_API_SECRET.
+    Store(
+        slug="mokshya",
+        brand="Mokshya",
+        shop_domain="5u7mdi-ap.myshopify.com",
+        custom_app="mokshya",
+        meta_ad_account=None,
+        currency="USD",
+        notes="Standalone family. Western-seeker spiritual brand. Uses default auth-hub app creds.",
+    ),
 )
 
 
