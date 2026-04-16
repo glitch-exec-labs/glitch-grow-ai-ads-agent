@@ -23,6 +23,7 @@ Data source IDs we use:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -150,13 +151,21 @@ async def query(
             f"{body['error'].get('code')} — {body['error'].get('description','')}"
         )
 
-    # Supermetrics response shape: data is either {"result": [...]} or a list directly
-    # depending on endpoint variant. Normalize to a list of dicts here.
+    # Supermetrics returns `data` in one of two shapes:
+    #   A) {"result": [ {field:value, ...}, ... ]}
+    #   B) [[header1, header2, ...], [v1, v2, ...], [v1, v2, ...]]   (table form, most common)
+    # Normalize both into list[dict].
     data = body.get("data")
-    if isinstance(data, dict):
-        return data.get("result", [])
-    if isinstance(data, list):
-        return data
+    if isinstance(data, dict) and "result" in data:
+        return data["result"]
+    if isinstance(data, list) and data:
+        # Table form: first row is the header
+        if all(isinstance(r, list) for r in data):
+            header = data[0]
+            return [dict(zip(header, row)) for row in data[1:]]
+        # Already list of dicts?
+        if all(isinstance(r, dict) for r in data):
+            return data
     return []
 
 
@@ -164,18 +173,14 @@ async def query(
 # High-level helpers per store
 # ---------------------------------------------------------------------------
 
-# Canonical Amazon Seller Central (ASELL) fields — verified valid 2026-04-16
-DEFAULT_SELLER_FIELDS = [
-    "Date",
-    "UnitsOrdered",
-    "OrderedProductSales",
-    "TotalOrderItems",
-    "Sessions",
-    "UnitSessionPercentage",
-]
+# Amazon Seller Central (ASELL) — only `Sessions` confirmed valid; other obvious
+# field names (UnitsOrdered, Orders, TotalOrderItems, OrderedProductSales) were
+# all rejected. Supermetrics's ASELL schema uses different names we haven't
+# discovered yet. Keep minimal for now; revisit with docs.
+DEFAULT_SELLER_FIELDS = ["Date", "Sessions"]
 
 # Canonical Amazon Ads (AA) fields — verified valid 2026-04-16
-# Note: "Cost" not "Spend"; "UnitsOrdered" not "UnitsSold" (Seller term).
+# Note: Supermetrics uses "Cost" not "Spend".
 DEFAULT_ADS_FIELDS = [
     "Date",
     "Impressions",
@@ -199,20 +204,7 @@ async def seller_stats(
         raise SupermetricsError(f"no Amazon Seller accounts mapped for store {store_slug!r}")
 
     date_range_type = f"last_{days}_days" if days in (7, 14, 30, 90) else "custom"
-    rows: list[dict] = []
-    for acct in accounts:
-        result_rows = await query(
-            ds_id="ASELL",
-            login_id=acct["login_id"],
-            account_id=acct["account_id"],
-            fields=DEFAULT_SELLER_FIELDS,
-            date_range_type=date_range_type,
-        )
-        for r in result_rows:
-            r["_marketplace"] = acct.get("name", acct["account_id"])
-            r["_account_id"] = acct["account_id"]
-            rows.append(r)
-    return rows
+    return await _gather_account_queries(accounts, "ASELL", DEFAULT_SELLER_FIELDS, date_range_type)
 
 
 async def ads_stats(
@@ -220,23 +212,60 @@ async def ads_stats(
     *,
     days: int = 30,
 ) -> list[dict]:
-    """Return daily Amazon Ads rows for all ad-accounts linked to this store."""
+    """Return daily Amazon Ads rows for all ad-accounts linked to this store.
+
+    Runs per-account queries in parallel since each one calls Amazon's async
+    report API (60-120s latency). Sequential would take minutes for a
+    multi-market brand like Ayurpet Global (9 ad accounts).
+    """
     accounts = [a for a in amazon_accounts_for_store(store_slug) if a["ds_id"] in ("AA", "ADSP")]
     if not accounts:
         raise SupermetricsError(f"no Amazon Ads accounts mapped for store {store_slug!r}")
 
     date_range_type = f"last_{days}_days" if days in (7, 14, 30, 90) else "custom"
-    rows: list[dict] = []
-    for acct in accounts:
-        result_rows = await query(
-            ds_id=acct["ds_id"],
+    return await _gather_account_queries(accounts, None, DEFAULT_ADS_FIELDS, date_range_type)
+
+
+async def _one_account_query(acct: dict, ds_id: str | None, fields: list[str], date_range_type: str) -> list[dict]:
+    """Query one account; on timeout/error, return [] and log — never raise."""
+    effective_ds = ds_id or acct["ds_id"]
+    try:
+        rows = await query(
+            ds_id=effective_ds,
             login_id=acct["login_id"],
             account_id=acct["account_id"],
-            fields=DEFAULT_ADS_FIELDS,
+            fields=fields,
             date_range_type=date_range_type,
+            timeout_s=240.0,
         )
-        for r in result_rows:
-            r["_marketplace"] = acct.get("name", acct["account_id"])
-            r["_account_id"] = acct["account_id"]
-            rows.append(r)
+    except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.TimeoutException):
+        log.warning("Supermetrics query timed out for %s (%s)", acct.get("name"), acct["account_id"])
+        return []
+    except SupermetricsError as e:
+        log.warning("Supermetrics query failed for %s: %s", acct.get("name"), e)
+        return []
+    except Exception:
+        log.exception("unexpected error querying %s", acct.get("name"))
+        return []
+    for r in rows:
+        r["_marketplace"] = acct.get("name", acct["account_id"])
+        r["_account_id"] = acct["account_id"]
     return rows
+
+
+async def _gather_account_queries(
+    accounts: list[dict],
+    ds_id: str | None,
+    fields: list[str],
+    date_range_type: str,
+) -> list[dict]:
+    """Run per-account queries concurrently, merge results. Individual failures
+    (timeouts, auth expiry, per-market issues) don't take down the whole call."""
+    results = await asyncio.gather(
+        *[_one_account_query(a, ds_id, fields, date_range_type) for a in accounts],
+        return_exceptions=False,
+    )
+    merged: list[dict] = []
+    for r in results:
+        merged.extend(r)
+    return merged
