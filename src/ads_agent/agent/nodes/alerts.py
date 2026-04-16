@@ -14,6 +14,7 @@ Returns a ranked list with each alert tagged by severity (🔴 act now / 🟡 wa
 from __future__ import annotations
 
 from ads_agent.config import STORE_AD_ACCOUNTS, get_store
+from ads_agent.fx import convert
 from ads_agent.meta.graph_client import MetaGraphError, ads_for_account
 from ads_agent.posthog.queries import store_insights
 
@@ -52,34 +53,48 @@ async def alerts_node(state: dict) -> dict:
         except MetaGraphError:
             continue
 
-    spend_7d = sum(a["spend"] for a in ads_7d)
-    spend_14d = sum(a["spend"] for a in ads_prior_7d)
-    spend_prior_7d = max(0.0, spend_14d - spend_7d)
-    purchases_7d = sum(a["purchases"] for a in ads_7d)
-    revenue_7d = sum(a["purchase_value"] for a in ads_7d)
+    # Convert Meta spend/revenue from ad-account currency to Shopify store currency
+    # so "spend up revenue flat" is comparing like with like.
+    async def _sum_converted(ads, field: str) -> float:
+        total = 0.0
+        for a in ads:
+            total += await convert(a.get(field, 0) or 0, a.get("currency", store.currency), store.currency)
+        return total
 
-    # --- Check 1: CPC drift vs family baseline ---
+    spend_7d_shop = await _sum_converted(ads_7d, "spend")
+    spend_14d_shop = await _sum_converted(ads_prior_7d, "spend")
+    spend_prior_7d_shop = max(0.0, spend_14d_shop - spend_7d_shop)
+    purchases_7d = sum(a["purchases"] for a in ads_7d)
+    revenue_7d_shop = await _sum_converted(ads_7d, "purchase_value")
+
+    # Meta-native totals (kept in ad-account currency) — used for CPC baseline check
+    # which compares against a CPC threshold denominated in Meta's own currency.
+    spend_7d_native = sum(a.get("spend", 0) or 0 for a in ads_7d)
+    native_ccy = next((a.get("currency") for a in ads_7d if a.get("currency")), "?")
+
+    # --- Check 1: CPC drift vs family baseline (compared in Meta's native currency) ---
     baseline = FAMILY_CPC_BASELINE.get(store.slug)
     if baseline:
         base_cpc, base_currency = baseline
         total_clicks = sum(a["clicks"] for a in ads_7d)
-        avg_cpc = spend_7d / total_clicks if total_clicks > 0 else 0
-        if avg_cpc > base_cpc * 1.3:
-            alerts.append(("🔴", (
-                f"*CPC drift:* avg CPC ran at {avg_cpc:.2f} {base_currency} last 7d, "
-                f"vs family baseline {base_cpc:.2f}. "
-                f"+{(avg_cpc/base_cpc-1)*100:.0f}% — cost-inefficient audiences or creative fatigue."
-            )))
-        elif avg_cpc > base_cpc * 1.15:
-            alerts.append(("🟡", (
-                f"*CPC mildly elevated:* {avg_cpc:.2f} {base_currency} vs baseline {base_cpc:.2f} "
-                f"(+{(avg_cpc/base_cpc-1)*100:.0f}%). Watch for drift."
-            )))
+        avg_cpc_native = spend_7d_native / total_clicks if total_clicks > 0 else 0
+        # Guard: only compare if ad-account currency matches baseline currency
+        if native_ccy == base_currency and avg_cpc_native > 0:
+            if avg_cpc_native > base_cpc * 1.3:
+                alerts.append(("🔴", (
+                    f"*CPC drift:* avg CPC ran at {avg_cpc_native:.2f} {base_currency} last 7d, "
+                    f"vs family baseline {base_cpc:.2f}. "
+                    f"+{(avg_cpc_native/base_cpc-1)*100:.0f}% — cost-inefficient audiences or creative fatigue."
+                )))
+            elif avg_cpc_native > base_cpc * 1.15:
+                alerts.append(("🟡", (
+                    f"*CPC mildly elevated:* {avg_cpc_native:.2f} {base_currency} vs baseline {base_cpc:.2f} "
+                    f"(+{(avg_cpc_native/base_cpc-1)*100:.0f}%). Watch for drift."
+                )))
 
-    # --- Check 2: spend up, revenue flat ---
-    if spend_7d > 0 and spend_prior_7d > 0:
-        spend_delta = (spend_7d - spend_prior_7d) / spend_prior_7d
-        # Shopify revenue comparison
+    # --- Check 2: spend up, revenue flat (both sides in Shopify store currency) ---
+    if spend_7d_shop > 0 and spend_prior_7d_shop > 0:
+        spend_delta = (spend_7d_shop - spend_prior_7d_shop) / spend_prior_7d_shop
         paid_7d = window_7d.paid_revenue
         paid_14d = window_14d.paid_revenue
         paid_prior_7d = max(0, paid_14d - paid_7d)
@@ -87,9 +102,9 @@ async def alerts_node(state: dict) -> dict:
         if spend_delta > 0.2 and rev_delta < 0.05:
             alerts.append(("🔴", (
                 f"*Spend up, revenue flat:* spend +{spend_delta*100:.0f}% week-over-week "
-                f"({spend_prior_7d:,.0f} → {spend_7d:,.0f} {store.currency}) but "
+                f"({spend_prior_7d_shop:,.0f} → {spend_7d_shop:,.0f} {store.currency}, FX-normalized) but "
                 f"Shopify paid revenue moved {rev_delta*100:+.0f}% "
-                f"({paid_prior_7d:,.0f} → {paid_7d:,.0f}). Efficiency breaking."
+                f"({paid_prior_7d:,.0f} → {paid_7d:,.0f} {store.currency}). Efficiency breaking."
             )))
 
     # --- Check 3: tracking gap (Meta purchases vs Shopify paid) ---
@@ -107,33 +122,43 @@ async def alerts_node(state: dict) -> dict:
                 f"({gap*100:.0f}% divergence last 7d). Likely dedup issue."
             )))
 
+    # Thresholds are denominated in Meta-native currency. For CAD accounts
+    # (Urban family), $75 CAD ≈ ₹4,650 INR worth of ad spend — roughly one full
+    # learning-phase day. For INR-native accounts (Ayurpet, Mokshya-INR) this
+    # translates to ₹75 which is tiny, so we convert the USD-75 equivalent per account.
+    # Simple approach: threshold = 75 in the ad's native currency. This is a
+    # useful heuristic because "75 CAD of test spend" and "75 * some multiplier INR"
+    # aren't really the same learning-phase budget; tune per-family later.
+    LEARNING_BUDGET_NATIVE = 75
+
     # --- Check 4: premature-kill bias (paused ads still in learning phase) ---
-    # Heuristic: ad is PAUSED, had <$75 spent, and had <=1 purchase → likely killed too early.
     early_kills = [
         a for a in ads_7d
         if a["status"] == "PAUSED"
-        and 0 < a["spend"] < 75
+        and 0 < a["spend"] < LEARNING_BUDGET_NATIVE
         and a["purchases"] <= 1
     ]
     if early_kills:
         names = ", ".join(f"`{a['ad_name'][:25]}`" for a in early_kills[:3])
         alerts.append(("🟡", (
             f"*Premature-kill reminder:* {len(early_kills)} ad(s) paused while still in learning phase "
-            f"(<$75 spent + ≤1 purchase). Examples: {names}. "
+            f"(<{LEARNING_BUDGET_NATIVE} {native_ccy} spent + ≤1 purchase). Examples: {names}. "
             f"If you still believe the hypothesis, relaunch with 72h hold."
         )))
 
     # --- Check 5: underperformers burning budget ---
     zero_purchase_burners = [
         a for a in ads_7d
-        if a["status"] == "ACTIVE" and a["spend"] > 75 and a["purchases"] == 0
+        if a["status"] == "ACTIVE"
+        and a["spend"] > LEARNING_BUDGET_NATIVE
+        and a["purchases"] == 0
     ]
     if zero_purchase_burners:
         zero_purchase_burners.sort(key=lambda a: a["spend"], reverse=True)
-        names = ", ".join(f"`{a['ad_name'][:25]}` ({a['spend']:.0f})" for a in zero_purchase_burners[:3])
+        names = ", ".join(f"`{a['ad_name'][:25]}` ({a['spend']:.0f} {a.get('currency','?')})" for a in zero_purchase_burners[:3])
         alerts.append(("🔴", (
-            f"*Zero-purchase burners:* {len(zero_purchase_burners)} active ad(s) spent >75 last 7d "
-            f"with 0 purchases. Top: {names}. Pause or test new creative."
+            f"*Zero-purchase burners:* {len(zero_purchase_burners)} active ad(s) spent >{LEARNING_BUDGET_NATIVE} {native_ccy} "
+            f"last 7d with 0 purchases. Top: {names}. Pause or test new creative."
         )))
 
     # --- Format reply ---

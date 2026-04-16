@@ -13,7 +13,11 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-16
 
-- **20:30 UTC** — auto-sync: 2026-04-16 20:30 UTC (`66a2f4d`) — 5 files
+- **20:45 UTC** — auto-sync: 2026-04-16 20:45 UTC (`a85ab5f`) — 3 files
+        M	src/ads_agent/agent/nodes/alerts.py
+        M	src/ads_agent/agent/nodes/roas_compute.py
+        A	src/ads_agent/fx.py
+- **20:30 UTC** — auto-sync: 2026-04-16 20:30 UTC (`b646daa`) — 6 files
         M	ops/scripts/backfill_embeddings.py
         M	src/ads_agent/agent/llm.py
         M	src/ads_agent/agent/nodes/tracking_audit.py
