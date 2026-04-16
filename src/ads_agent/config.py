@@ -2,22 +2,29 @@
 
 Single source of truth for:
   - Store registry (shop domain -> custom app slug + Meta ad account)
+  - Meta ad-account multimap (one store may spend through several Meta accounts)
   - Required Shopify scope matrix per Custom App
   - Env-derived runtime settings (DB, Meta, PostHog, Telegram, LLM)
 
-STORES below is a TEMPLATE with example values. In your deployment:
-  1. Replace every shop_domain, meta_ad_account, and slug with your real values.
-  2. Alternatively, load STORES from an env-var JSON blob so nothing is hard-coded.
-  3. Never commit real myshopify domains or Meta act_... IDs to a public repo.
+**Real store data loads from env vars at runtime** — the committed file carries
+only an illustrative placeholder so the repo can serve as a public showcase
+without leaking client myshopify domains or Meta act_... IDs.
+
+Point STORES_JSON and STORE_AD_ACCOUNTS_JSON in .env at the real data.
+See .env.example for the exact shape.
 """
 from __future__ import annotations
 
 import json
+import logging
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -28,84 +35,88 @@ class Store:
     brand: str  # human-facing brand name
     shop_domain: str  # *.myshopify.com
     custom_app: str  # matches *_CLIENT_ID prefix in multi-store-theme-manager/.env
-    meta_ad_account: str | None  # act_... or None if not linked
+    meta_ad_account: str | None  # act_... primary; all linked accounts live in STORE_AD_ACCOUNTS
     currency: str
     notes: str = ""
 
 
-# Live store registry — server-only, never committed to public repo.
-# Grouped by client family (Urban CAD / Ayurpet INR / Mokshya standalone).
-STORES: tuple[Store, ...] = (
-    # --- Urban family (CAD) ---
+# Placeholder registry (public showcase). The real registry loads from
+# STORES_JSON in .env at runtime — see _load_stores() below.
+_PLACEHOLDER_STORES: tuple[Store, ...] = (
     Store(
-        slug="urban",
-        brand="Urban Classics",
-        shop_domain="f51039.myshopify.com",
-        custom_app="urban",
-        meta_ad_account="act_1765937727381511",
-        currency="CAD",
-    ),
-    Store(
-        slug="storico",
-        brand="Storico",
-        shop_domain="ys4n0u-ys.myshopify.com",
-        custom_app="storico",
-        meta_ad_account=None,
-        currency="CAD",
-        notes="Creds issued 2026-04-16. Pending merchant install.",
-    ),
-    Store(
-        slug="classicoo",
-        brand="Classicoo",
-        shop_domain="52j1ga-hz.myshopify.com",
-        custom_app="classicoo",
-        meta_ad_account="act_1231977889107681",
-        currency="CAD",
-        notes="Scope bump pending (needs merchant re-consent for read/write_orders).",
-    ),
-    Store(
-        slug="trendsetters",
-        brand="Trendsetters",
-        shop_domain="acmsuy-g0.myshopify.com",
-        custom_app="trendsetters",
-        meta_ad_account=None,
-        currency="CAD",
-        notes="Creds issued 2026-04-16. Pending merchant install.",
-    ),
-    # --- Ayurpet family (INR, one ad account across both storefronts) ---
-    Store(
-        slug="ayurpet-ind",
-        brand="Ayurpet (India)",
-        shop_domain="1ygbmd-pr.myshopify.com",
-        custom_app="ayurpet-ind",
-        meta_ad_account="act_654879327196107",
-        currency="INR",
-        notes="India-market. Shares ad account with Ayurpet Global.",
-    ),
-    Store(
-        slug="ayurpet-global",
-        brand="Ayurpet (Global)",
-        shop_domain="2684sq-mt.myshopify.com",
-        custom_app="ayurpet",
-        meta_ad_account="act_654879327196107",
-        currency="INR",
-        notes="Global storefront. Same ad account as India; reconcile ROAS across both.",
-    ),
-    # --- Mokshya (standalone) ---
-    # Uses the DEFAULT Shopify app credentials (SHOPIFY_API_KEY / SHOPIFY_API_SECRET in
-    # auth-hub .env), not a per-client Custom App. We still key the webhook HMAC secret
-    # under custom_app="mokshya" for symmetry; the .env map points that slug at the
-    # default SHOPIFY_API_SECRET.
-    Store(
-        slug="mokshya",
-        brand="Mokshya",
-        shop_domain="5u7mdi-ap.myshopify.com",
-        custom_app="mokshya",
-        meta_ad_account=None,
+        slug="store-a",
+        brand="Store A (Example)",
+        shop_domain="your-store-a.myshopify.com",
+        custom_app="store-a",
+        meta_ad_account="act_REPLACE_WITH_YOUR_ACCOUNT_ID",
         currency="USD",
-        notes="Standalone family. Western-seeker spiritual brand. Uses default auth-hub app creds.",
+        notes="Placeholder — replace via STORES_JSON env var.",
+    ),
+    Store(
+        slug="store-b-india",
+        brand="Store B (India)",
+        shop_domain="your-store-b.myshopify.com",
+        custom_app="store-b-ind",
+        meta_ad_account="act_REPLACE_WITH_YOUR_ACCOUNT_ID",
+        currency="INR",
+        notes="Example of a shared-ad-account sibling.",
+    ),
+    Store(
+        slug="store-b-global",
+        brand="Store B (Global)",
+        shop_domain="your-store-b-global.myshopify.com",
+        custom_app="store-b",
+        meta_ad_account="act_REPLACE_WITH_YOUR_ACCOUNT_ID",
+        currency="INR",
+        notes="Shares ad account with Store B India; reconcile ROAS across both.",
     ),
 )
+
+
+def _load_stores() -> tuple[Store, ...]:
+    """Load STORES from STORES_JSON env var; fall back to placeholders."""
+    raw = os.environ.get("STORES_JSON", "").strip()
+    if not raw:
+        return _PLACEHOLDER_STORES
+    try:
+        entries = json.loads(raw)
+        return tuple(
+            Store(
+                slug=e["slug"],
+                brand=e.get("brand", e["slug"]),
+                shop_domain=e["shop_domain"],
+                custom_app=e["custom_app"],
+                meta_ad_account=e.get("meta_ad_account"),
+                currency=e.get("currency", "USD"),
+                notes=e.get("notes", ""),
+            )
+            for e in entries
+        )
+    except (json.JSONDecodeError, KeyError) as ex:
+        log.warning("STORES_JSON invalid, using placeholders: %s", ex)
+        return _PLACEHOLDER_STORES
+
+
+STORES: tuple[Store, ...] = _load_stores()
+
+
+def _load_store_ad_accounts() -> dict[str, list[str]]:
+    """Map store_slug -> list of Meta ad account IDs to sum spend across.
+
+    Loads from STORE_AD_ACCOUNTS_JSON env var (JSON object). Empty map if unset;
+    roas_compute will then reply "no Meta accounts mapped for <slug>" gracefully.
+    """
+    raw = os.environ.get("STORE_AD_ACCOUNTS_JSON", "").strip()
+    if not raw:
+        return {}
+    try:
+        return {k: list(v) for k, v in json.loads(raw).items()}
+    except (json.JSONDecodeError, TypeError, ValueError) as ex:
+        log.warning("STORE_AD_ACCOUNTS_JSON invalid, returning empty map: %s", ex)
+        return {}
+
+
+STORE_AD_ACCOUNTS: dict[str, list[str]] = _load_store_ad_accounts()
 
 
 # Scopes we need above the existing write_orders baseline to do analytics reads.

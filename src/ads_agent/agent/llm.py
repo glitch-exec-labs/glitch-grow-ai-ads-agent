@@ -46,25 +46,51 @@ def pick(tier: str = "cheap") -> str:
     return "openai/gpt-4o-mini"
 
 
+def _fallback_chain(tier: str) -> list[str]:
+    """Ordered list of models to try for a tier, from preferred to last-resort."""
+    s = settings()
+    chain: list[str] = []
+    if tier == "smart":
+        if s.google_api_key:
+            chain.extend(["gemini/gemini-2.5-pro", "gemini/gemini-2.5-flash"])
+        if s.openai_api_key:
+            chain.append("openai/gpt-4o")
+        if s.anthropic_api_key:
+            chain.append("claude-sonnet-4-5")
+    else:
+        if s.google_api_key:
+            chain.append("gemini/gemini-2.5-flash")
+        if s.openai_api_key:
+            chain.append("openai/gpt-4o-mini")
+    return chain or ["openai/gpt-4o-mini"]
+
+
 async def complete(prompt: str, *, tier: str = "cheap", system: str | None = None, max_tokens: int = 800) -> str:
-    """One-shot text completion. Returns the text content."""
+    """One-shot text completion with automatic fallback across providers."""
     _ensure_env()
     import litellm
 
-    model = pick(tier)
-    messages = []
+    messages: list[dict] = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
-    try:
-        resp = await litellm.acompletion(
-            model=model,
-            messages=messages,
-            max_tokens=max_tokens,
-            temperature=0.3,
-        )
-        return resp.choices[0].message.content or ""
-    except Exception as e:
-        log.exception("LLM call failed (model=%s)", model)
-        return f"(LLM error: {e})"
+    last_err: Exception | None = None
+    for model in _fallback_chain(tier):
+        try:
+            resp = await litellm.acompletion(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=0.3,
+            )
+            text = resp.choices[0].message.content or ""
+            if text.strip():
+                return text
+        except Exception as e:
+            last_err = e
+            log.warning("LLM %s failed: %s", model, str(e)[:200])
+            continue
+
+    log.error("all LLM providers failed for tier=%s", tier)
+    return f"(LLM error across all providers: {last_err})"

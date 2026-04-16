@@ -3,38 +3,16 @@
 Pulls:
   - Shopify paid revenue (from PostHog, last N days)
   - Meta spend + Meta-reported purchase_value (from Graph API, same window)
-  - For stores with multiple ad accounts (Urban, Storico, Mokshya — see
-    SHOPIFY_STORES_INFRA.md), sums spend across ALL listed accounts for the store.
+  - For stores with multiple ad accounts, sums spend across ALL linked accounts.
+
+Store → ad-account multimap is loaded from STORE_AD_ACCOUNTS_JSON env var
+via `ads_agent.config.STORE_AD_ACCOUNTS`. Never hard-code account IDs here.
 """
 from __future__ import annotations
 
-from ads_agent.config import get_store
+from ads_agent.config import STORE_AD_ACCOUNTS, get_store
 from ads_agent.meta.graph_client import MetaGraphError, account_spend
 from ads_agent.posthog.queries import store_insights
-
-# Each store -> list of Meta ad account IDs to sum across. Sourced from
-# SHOPIFY_STORES_INFRA.md Reverse-view table. Server-only; not committed to public repo.
-STORE_AD_ACCOUNTS: dict[str, list[str]] = {
-    "urban": [
-        "act_1765937727381511",  # URBAN-CAD-IST (primary)
-        "act_1909845012991177",  # Urban-CAD-IST (secondary)
-        "act_769104785114570",   # urban global (legacy)
-    ],
-    "storico": [
-        "act_1072546905038329",  # Storico-New-CAD-IST (primary)
-        "act_1134191618602887",  # STORICO-IST-CAD
-        "act_755235000581939",   # Storico-New-CAD
-        "act_3446595268850626",  # Storico-CAD-IST (disabled but may have historical data)
-    ],
-    "classicoo": ["act_1231977889107681"],
-    "trendsetters": ["act_1445770643706149"],
-    "ayurpet-ind": ["act_654879327196107"],
-    "ayurpet-global": ["act_654879327196107"],  # same as India
-    "mokshya": [
-        "act_507013211846013",   # MOKSHYA-CAD-EST
-        "act_30237311672580998", # Mokshya-INR-IST
-    ],
-}
 
 
 async def roas_compute_node(state: dict) -> dict:
