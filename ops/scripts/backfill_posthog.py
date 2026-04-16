@@ -52,16 +52,9 @@ query orders($query: String!, $first: Int!, $after: String) {
         createdAt
         displayFinancialStatus
         currentTotalPriceSet { shopMoney { amount currencyCode } }
-        customer { id email }
         lineItems(first: 50) {
           edges {
             node { title sku quantity originalUnitPriceSet { shopMoney { amount } } }
-          }
-        }
-        customerJourneySummary {
-          firstVisit {
-            landingPageHtml
-            utmParameters { source medium campaign content term }
           }
         }
         sourceName
@@ -71,25 +64,14 @@ query orders($query: String!, $first: Int!, $after: String) {
   }
 }
 """
+# Note: customer + customerJourneySummary fields require read_customers scope,
+# which is not granted on the baseline write_orders Custom Apps yet. Once scopes
+# bump in v1, add those fields back to enrich PostHog person-stitching + UTM attribution.
 
 
 def _node_to_order(node: dict, currency: str) -> dict:
     money = node.get("currentTotalPriceSet", {}).get("shopMoney", {})
-    customer = node.get("customer") or {}
-    customer_id = str(customer.get("id", "")).replace("gid://shopify/Customer/", "") or node.get("id", "")
-    email = customer.get("email", "")
-
-    utm_raw = (
-        (node.get("customerJourneySummary") or {})
-        .get("firstVisit") or {}
-    ).get("utmParameters") or {}
-    utm = {k: v for k, v in {
-        "source": utm_raw.get("source"),
-        "medium": utm_raw.get("medium"),
-        "campaign": utm_raw.get("campaign"),
-        "content": utm_raw.get("content"),
-        "term": utm_raw.get("term"),
-    }.items() if v}
+    order_id = node["id"].replace("gid://shopify/Order/", "")
 
     line_items = [
         {
@@ -102,15 +84,17 @@ def _node_to_order(node: dict, currency: str) -> dict:
     ]
 
     return {
-        "order_id": node["id"].replace("gid://shopify/Order/", ""),
+        "order_id": order_id,
         "order_name": node.get("name", ""),
         "value": float(money.get("amount", 0)),
         "currency": money.get("currencyCode", currency),
-        "customer_id": customer_id,
-        "email": email,
+        # Until read_customers is granted, use order_id as distinct_id. PostHog
+        # can merge with a customer-level identity later via alias() once v1 lands.
+        "customer_id": order_id,
+        "email": "",
         "financial_status": node.get("displayFinancialStatus", "").lower(),
         "fulfillment_status": "unknown",
-        "utm": utm,
+        "utm": {},
         "line_items": line_items,
         "tags": node.get("tags", ""),
         "source_name": node.get("sourceName", ""),
@@ -129,7 +113,9 @@ async def backfill_store(store_slug: str, days: int) -> int:
         return 0
 
     gql = ShopifyAdminClient(store.shop_domain, sess.access_token)
-    query = f"created_at:>-{days}d financial_status:paid"
+    from datetime import timedelta
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    query = f"created_at:>={since} financial_status:paid"
     cursor = None
     total = 0
 

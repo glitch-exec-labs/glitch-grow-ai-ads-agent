@@ -66,15 +66,6 @@ mutation createWebhook($topic: WebhookSubscriptionTopic!, $url: URL!) {
 }
 """
 
-DELETE_WEBHOOK = """
-mutation deleteWebhook($id: ID!) {
-  webhookSubscriptionDelete(id: $id) {
-    userErrors { field message }
-    deletedWebhookSubscriptionId
-  }
-}
-"""
-
 
 async def register_for_store(store_slug: str, dry_run: bool = False) -> None:
     store = get_store(store_slug)
@@ -91,41 +82,28 @@ async def register_for_store(store_slug: str, dry_run: bool = False) -> None:
     base_url = settings().public_base_url.rstrip("/")
     callback_url = f"{base_url}/shopify/webhook/{store.shop_domain}"
 
-    # List existing
+    # List existing webhooks — only track ours (pointing at our callback_url).
+    # NEVER touch webhooks from other services (e.g. cod-confirm, glitch-executor).
     try:
         data = await gql.query(LIST_WEBHOOKS, variables={"first": 50})
     except ShopifyAdminError as e:
         log.error("could not list webhooks for %s: %s", store_slug, e)
         return
 
-    existing: dict[str, str] = {}  # topic -> webhook_id
-    stale: list[str] = []          # ids pointing at wrong URL
+    our_topics: set[str] = set()  # topics already pointing at OUR callback_url
 
     for edge in data.get("webhookSubscriptions", {}).get("edges", []):
         node = edge["node"]
         topic = node["topic"]
         url = node.get("endpoint", {}).get("callbackUrl", "")
-        wid = node["id"]
         if topic in TOPICS:
             if url == callback_url:
-                existing[topic] = wid
+                our_topics.add(topic)
             else:
-                log.info("  stale webhook %s topic=%s url=%s", wid, topic, url)
-                stale.append(wid)
+                log.info("  leaving existing webhook topic=%s url=%s (not ours)", topic, url)
 
-    # Remove stale hooks pointing at old URLs
-    for wid in stale:
-        if dry_run:
-            log.info("[DRY-RUN] would delete stale webhook %s", wid)
-            continue
-        try:
-            await gql.query(DELETE_WEBHOOK, variables={"id": wid})
-            log.info("  deleted stale webhook %s", wid)
-        except ShopifyAdminError as e:
-            log.warning("  could not delete %s: %s", wid, e)
-
-    # Create missing
-    missing = [t for t in TOPICS if t not in existing]
+    # Only create topics we don't own yet — never remove other services' hooks
+    missing = [t for t in TOPICS if t not in our_topics]
     if not missing:
         log.info("%s — all %d webhooks already registered ✓", store_slug, len(TOPICS))
         return
@@ -145,7 +123,7 @@ async def register_for_store(store_slug: str, dry_run: bool = False) -> None:
         except ShopifyAdminError as e:
             log.error("  could not create %s: %s", topic, e)
 
-    log.info("%s — done: %d created, %d stale removed", store_slug, len(missing), len(stale))
+    log.info("%s — done: %d created (other services' hooks left untouched)", store_slug, len(missing))
 
 
 async def main(slugs: list[str], dry_run: bool) -> None:
