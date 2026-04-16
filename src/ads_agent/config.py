@@ -34,7 +34,9 @@ class Store:
 
 
 # Live store registry — server-only, never committed to public repo.
+# Grouped by client family (Urban CAD / Ayurpet INR / Mokshya standalone).
 STORES: tuple[Store, ...] = (
+    # --- Urban family (CAD) ---
     Store(
         slug="urban",
         brand="Urban Classics",
@@ -43,6 +45,34 @@ STORES: tuple[Store, ...] = (
         meta_ad_account="act_1765937727381511",
         currency="CAD",
     ),
+    Store(
+        slug="storico",
+        brand="Storico",
+        shop_domain="ys4n0u-ys.myshopify.com",
+        custom_app="storico",
+        meta_ad_account=None,
+        currency="CAD",
+        notes="Creds issued 2026-04-16. Pending merchant install.",
+    ),
+    Store(
+        slug="classicoo",
+        brand="Classicoo",
+        shop_domain="52j1ga-hz.myshopify.com",
+        custom_app="classicoo",
+        meta_ad_account="act_1231977889107681",
+        currency="CAD",
+        notes="Scope bump pending (needs merchant re-consent for read/write_orders).",
+    ),
+    Store(
+        slug="trendsetters",
+        brand="Trendsetters",
+        shop_domain="acmsuy-g0.myshopify.com",
+        custom_app="trendsetters",
+        meta_ad_account=None,
+        currency="CAD",
+        notes="Creds issued 2026-04-16. Pending merchant install.",
+    ),
+    # --- Ayurpet family (INR, one ad account across both storefronts) ---
     Store(
         slug="ayurpet-ind",
         brand="Ayurpet (India)",
@@ -61,22 +91,8 @@ STORES: tuple[Store, ...] = (
         currency="INR",
         notes="Global storefront. Same ad account as India; reconcile ROAS across both.",
     ),
-    Store(
-        slug="classicoo-1",
-        brand="Classicoo",
-        shop_domain="52j1ga-hz.myshopify.com",
-        custom_app="classicoo",
-        meta_ad_account="act_1231977889107681",
-        currency="CAD",
-    ),
-    Store(
-        slug="classicoo-2",
-        brand="Classicoo (secondary)",
-        shop_domain="5u7mdi-ap.myshopify.com",
-        custom_app="classicoo",
-        meta_ad_account=None,
-        currency="CAD",
-    ),
+    # --- Mokshya (standalone) ---
+    # NOTE: placeholder entry — update shop_domain and custom_app once credentials issued.
 )
 
 

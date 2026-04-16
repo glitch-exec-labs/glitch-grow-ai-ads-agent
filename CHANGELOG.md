@@ -13,7 +13,10 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-16
 
-- **07:00 UTC** — auto-sync: 2026-04-16 07:00 UTC (`ab041b1`) — 2 files
+- **07:30 UTC** — auto-sync: 2026-04-16 07:30 UTC (`9ff6141`) — 2 files
+        M	src/ads_agent/config.py
+        M	src/ads_agent/shopify/sessions.py
+- **07:00 UTC** — auto-sync: 2026-04-16 07:00 UTC (`8bf9c3b`) — 3 files
         M	ops/scripts/backfill_posthog.py
         M	ops/scripts/register_webhooks.py
 - **06:45 UTC** — auto-sync: 2026-04-16 06:45 UTC (`cadb8da`) — 7 files

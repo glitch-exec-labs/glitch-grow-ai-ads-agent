@@ -32,13 +32,19 @@ class ShopifySession:
 
 
 async def get_session(shop_domain: str) -> ShopifySession | None:
-    """Fetch the offline session for a shop. Returns None if not installed."""
+    """Fetch the offline session for a shop. Returns None if not installed.
+
+    Filters to `id LIKE 'offline_%'` so we skip `oauth_state_%` nonce rows
+    that exist during an in-flight install but carry no access token.
+    """
     conn = await asyncpg.connect(settings().postgres_insights_ro_url)
     try:
         row = await conn.fetchrow(
             '''SELECT shop, "accessToken", scope, "isOnline"
                FROM "Session"
-               WHERE shop = $1 AND "isOnline" = false
+               WHERE shop = $1
+                 AND id LIKE 'offline_%'
+                 AND "accessToken" != ''
                ORDER BY expires DESC NULLS FIRST
                LIMIT 1''',
             shop_domain,
@@ -56,13 +62,14 @@ async def get_session(shop_domain: str) -> ShopifySession | None:
 
 
 async def list_sessions() -> list[ShopifySession]:
-    """All offline sessions. Used by /scopes_check."""
+    """All completed offline sessions (excludes oauth_state nonce rows)."""
     conn = await asyncpg.connect(settings().postgres_insights_ro_url)
     try:
         rows = await conn.fetch(
             '''SELECT DISTINCT ON (shop) shop, "accessToken", scope, "isOnline"
                FROM "Session"
-               WHERE "isOnline" = false
+               WHERE id LIKE 'offline_%'
+                 AND "accessToken" != ''
                ORDER BY shop, expires DESC NULLS FIRST'''
         )
     finally:
