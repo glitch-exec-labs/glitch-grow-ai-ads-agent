@@ -17,6 +17,7 @@ from ads_agent.config import settings
 from ads_agent.telegram.handlers import (
     cmd_ads,
     cmd_alerts,
+    cmd_amazon,
     cmd_creative,
     cmd_help,
     cmd_ideas,
@@ -50,6 +51,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("creative", cmd_creative))
     app.add_handler(CommandHandler("ideas", cmd_ideas))
     app.add_handler(CommandHandler("alerts", cmd_alerts))
+    app.add_handler(CommandHandler("amazon", cmd_amazon))
     return app
 
 

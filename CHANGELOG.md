@@ -13,7 +13,14 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-16
 
-- **22:30 UTC** — auto-sync: 2026-04-16 22:30 UTC (`8d048ae`) — 1 file
+- **23:00 UTC** — auto-sync: 2026-04-16 23:00 UTC (`225dc23`) — 6 files
+        M	src/ads_agent/agent/graph.py
+        A	src/ads_agent/agent/nodes/amazon_insights.py
+        A	src/ads_agent/amazon/__init__.py
+        A	src/ads_agent/amazon/supermetrics_client.py
+        M	src/ads_agent/telegram/bot.py
+        ... (+1 more)
+- **22:30 UTC** — auto-sync: 2026-04-16 22:30 UTC (`b1cacee`) — 2 files
         M	src/ads_agent/memory/recall.py
 - **22:15 UTC** — auto-sync: 2026-04-16 22:15 UTC (`0c414b3`) — 3 files
         M	src/ads_agent/agent/nodes/tracking_audit.py

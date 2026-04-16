@@ -19,6 +19,7 @@ from langgraph.graph import END, StateGraph
 
 from ads_agent.agent.nodes.ads_leaderboard import ads_leaderboard_node
 from ads_agent.agent.nodes.alerts import alerts_node
+from ads_agent.agent.nodes.amazon_insights import amazon_insights_node
 from ads_agent.agent.nodes.creative_critique import creative_critique_node
 from ads_agent.agent.nodes.ideas import ideas_node
 from ads_agent.agent.nodes.pull_insights import pull_insights_node
@@ -61,6 +62,7 @@ def _route(state: AgentState) -> str:
         "creative": "creative_critique",
         "ideas": "ideas",
         "alerts": "alerts",
+        "amazon": "amazon_insights",
     }.get(cmd, "pull_insights")
 
 
@@ -74,10 +76,12 @@ def build_graph():
     g.add_node("creative_critique", creative_critique_node)
     g.add_node("ideas", ideas_node)
     g.add_node("alerts", alerts_node)
+    g.add_node("amazon_insights", amazon_insights_node)
 
     g.set_entry_point("recall")
     g.add_conditional_edges("recall", _route)
     for node in ("pull_insights", "roas_compute", "tracking_audit",
-                 "ads_leaderboard", "creative_critique", "ideas", "alerts"):
+                 "ads_leaderboard", "creative_critique", "ideas", "alerts",
+                 "amazon_insights"):
         g.add_edge(node, END)
     return g.compile()
