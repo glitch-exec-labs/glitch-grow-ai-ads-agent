@@ -44,11 +44,28 @@ class StoreInsights:
     paid_orders: int
     paid_revenue: float
     pending_orders: int
+    pending_revenue: float
     cancelled_orders: int
     refunded_orders: int
     email_coverage_pct: float
     utm_coverage_pct: float
     top_utm_source: str | None
+
+    @property
+    def pipeline_orders(self) -> int:
+        """paid + pending = real-world sold-units count.
+
+        Used when Shopify `financial_status=paid` is artificially low because
+        the courier/delivery-partner integration that promotes COD orders to
+        'paid' is broken or delayed. A small double-count is possible for
+        orders that progressed from pending to paid inside the window, but
+        it's negligible at reporting resolution.
+        """
+        return int(self.paid_orders) + int(self.pending_orders)
+
+    @property
+    def pipeline_revenue(self) -> float:
+        return float(self.paid_revenue) + float(self.pending_revenue)
 
 
 async def store_insights(store_slug: str, days: int = 7) -> StoreInsights:
@@ -80,6 +97,7 @@ async def store_insights(store_slug: str, days: int = 7) -> StoreInsights:
       uniqIf(order_id, event = 'order_paid')                                  AS paid_orders,
       coalesce(sumIf(toFloat(value), event = 'order_paid'), 0)                AS paid_revenue,
       uniqIf(order_id, event = 'order_pending')                               AS pending_orders,
+      coalesce(sumIf(toFloat(value), event = 'order_pending'), 0)             AS pending_revenue,
       uniqIf(order_id, event = 'order_cancelled')                             AS cancelled_orders,
       uniqIf(order_id, event IN ('order_refunded','order_partially_refunded','refund_created')) AS refunded_orders,
       countIf(notEmpty(email)) / greatest(count(), 1)                         AS email_cov,
@@ -89,8 +107,8 @@ async def store_insights(store_slug: str, days: int = 7) -> StoreInsights:
     """
     rows = await hogql(q)
     if not rows:
-        return StoreInsights(store_slug, days, 0, 0, 0, 0, 0, 0, 0.0, 0.0, None)
-    u, p, rev, pend, canc, ref, em_cov, ut_cov = rows[0]
+        return StoreInsights(store_slug, days, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0, None)
+    u, p, rev, pend, pend_rev, canc, ref, em_cov, ut_cov = rows[0]
 
     # Top UTM source (same dedup pattern)
     q_utm = f"""
@@ -121,6 +139,7 @@ async def store_insights(store_slug: str, days: int = 7) -> StoreInsights:
         paid_orders=int(p or 0),
         paid_revenue=float(rev or 0),
         pending_orders=int(pend or 0),
+        pending_revenue=float(pend_rev or 0),
         cancelled_orders=int(canc or 0),
         refunded_orders=int(ref or 0),
         email_coverage_pct=round((em_cov or 0) * 100, 1),

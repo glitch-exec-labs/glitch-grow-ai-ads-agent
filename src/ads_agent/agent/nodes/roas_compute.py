@@ -21,6 +21,21 @@ from ads_agent.meta.graph_client import MetaGraphError, account_spend
 from ads_agent.posthog.queries import store_insights
 
 
+# Per-store CAC threshold (ad-account native currency, per pipeline order).
+# "Pipeline order" = paid + pending orders (real-world conversions; `paid`
+# alone is artificially low because the delivery partner's status-integration
+# to Shopify is currently broken — see user note 2026-04-16).
+#
+# Urban family: ~$3 CAD CAC is within threshold (10 orders / $30 CAD spend).
+CAC_THRESHOLDS: dict[str, tuple[float, str]] = {
+    "urban": (3.0, "CAD"),
+    "storico": (3.0, "CAD"),
+    "classicoo": (3.0, "CAD"),
+    "trendsetters": (3.0, "CAD"),
+    # Ayurpet and Mokshya thresholds TBD — fall back to no verdict
+}
+
+
 async def roas_compute_node(state: dict) -> dict:
     slug = state["store_slug"]
     days = int(state.get("days", 7))
@@ -35,10 +50,12 @@ async def roas_compute_node(state: dict) -> dict:
     if not ad_accounts:
         return {**state, "reply_text": f"No Meta ad accounts mapped for `{slug}` yet."}
 
-    # Aggregate in SHOP CURRENCY via FX
+    # Aggregate in SHOP CURRENCY via FX, also keep Meta-native totals
     total_spend_shop = 0.0
     total_meta_value_shop = 0.0
+    total_spend_native = 0.0
     total_meta_purchases = 0
+    native_ccy: str | None = None
     account_lines: list[str] = []
     fx_notes: set[str] = set()
 
@@ -58,7 +75,10 @@ async def roas_compute_node(state: dict) -> dict:
 
         total_spend_shop += spend_shop
         total_meta_value_shop += value_shop
+        total_spend_native += spend_native
         total_meta_purchases += d["purchases"]
+        if native_ccy is None:
+            native_ccy = meta_ccy
 
         if meta_ccy != shop_ccy:
             fx_notes.add(f"{meta_ccy}→{shop_ccy}")
@@ -75,10 +95,29 @@ async def roas_compute_node(state: dict) -> dict:
                     f"{d['purchases']} purchases · reported rev {value_native:,.2f} {meta_ccy} (≈ {value_shop:,.2f} {shop_ccy})"
                 )
 
-    # ROAS math — all in shop currency
-    true_roas = (shopify.paid_revenue / total_spend_shop) if total_spend_shop > 0 else 0.0
+    # Paid-only view (conservative floor — current "financial_status=paid" count)
+    paid_roas = (shopify.paid_revenue / total_spend_shop) if total_spend_shop > 0 else 0.0
+
+    # Pipeline view (paid + pending = all real conversions, since the delivery-partner
+    # integration that promotes COD orders to paid is currently broken upstream)
+    pipeline_orders = shopify.pipeline_orders
+    pipeline_revenue = shopify.pipeline_revenue
+    pipeline_roas = (pipeline_revenue / total_spend_shop) if total_spend_shop > 0 else 0.0
+
+    # Customer Acquisition Cost per pipeline order, in Meta's native currency
+    cac_native = (total_spend_native / pipeline_orders) if pipeline_orders > 0 else 0.0
+    threshold = CAC_THRESHOLDS.get(store.slug)
+    cac_verdict = ""
+    if threshold and native_ccy == threshold[1] and cac_native > 0:
+        target, t_ccy = threshold
+        if cac_native <= target:
+            cac_verdict = f" ✅ within threshold (≤ {target:.2f} {t_ccy})"
+        elif cac_native <= target * 1.5:
+            cac_verdict = f" 🟡 above threshold (target ≤ {target:.2f} {t_ccy}, +{(cac_native/target-1)*100:.0f}%)"
+        else:
+            cac_verdict = f" 🔴 well above threshold (target ≤ {target:.2f} {t_ccy}, +{(cac_native/target-1)*100:.0f}%)"
+
     meta_roas = (total_meta_value_shop / total_spend_shop) if total_spend_shop > 0 else 0.0
-    delta_pct = ((meta_roas - true_roas) / true_roas * 100) if true_roas > 0 else 0.0
 
     fx_tag = ""
     if fx_notes:
@@ -87,13 +126,15 @@ async def roas_compute_node(state: dict) -> dict:
     lines = [
         f"*{store.brand}* · last {days}d · ROAS",
         "",
-        f"Shopify paid revenue: {shopify.paid_revenue:,.2f} {shop_ccy}  ({shopify.paid_orders} paid orders)",
-        f"Meta spend (all accounts, in {shop_ccy}): {total_spend_shop:,.2f}{fx_tag}",
-        f"Meta reported purchases: {total_meta_purchases} · reported value (in {shop_ccy}): {total_meta_value_shop:,.2f}",
+        f"Pipeline orders (paid+pending): *{pipeline_orders}*  ·  paid: {shopify.paid_orders}  ·  pending: {shopify.pending_orders}  ·  cancelled: {shopify.cancelled_orders}",
+        f"Pipeline revenue: {pipeline_revenue:,.2f} {shop_ccy}  (paid: {shopify.paid_revenue:,.2f}, pending: {shopify.pending_revenue:,.2f})",
+        f"Meta spend: {total_spend_native:,.2f} {native_ccy or '?'}  (≈ {total_spend_shop:,.2f} {shop_ccy}){fx_tag}",
         "",
-        f"*True ROAS: {true_roas:.2f}x*  (Shopify paid revenue / Meta spend, same-currency)",
-        f"Meta-reported ROAS: {meta_roas:.2f}x",
-        f"Delta: Meta over/under-reports by {delta_pct:+.1f}%",
+        f"*Pipeline ROAS: {pipeline_roas:.2f}x*  (pipeline revenue / Meta spend, same-currency — use this as the truth until delivery-partner payment status is fixed)",
+        f"Paid-only ROAS: {paid_roas:.2f}x  (conservative floor, under-reports because courier→Shopify status sync is broken)",
+        f"Meta-reported ROAS: {meta_roas:.2f}x  (inflated by pixel/CAPI dedup issue)",
+        "",
+        f"*CAC per pipeline order: {cac_native:,.2f} {native_ccy or '?'}*{cac_verdict}",
     ]
     if account_lines:
         lines.append("")
