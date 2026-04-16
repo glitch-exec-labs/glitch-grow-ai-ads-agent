@@ -13,7 +13,10 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-16
 
-- **10:30 UTC** — auto-sync: 2026-04-16 10:30 UTC (`c5cb5f1`) — 6 files
+- **10:45 UTC** — auto-sync: 2026-04-16 10:45 UTC (`cfa6996`) — 2 files
+        M	src/ads_agent/telegram/bot.py
+        M	src/ads_agent/telegram/handlers.py
+- **10:30 UTC** — auto-sync: 2026-04-16 10:30 UTC (`e8acac6`) — 7 files
         M	src/ads_agent/agent/graph.py
         M	src/ads_agent/agent/llm.py
         A	src/ads_agent/agent/nodes/ads_leaderboard.py

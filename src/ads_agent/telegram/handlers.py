@@ -82,3 +82,34 @@ async def cmd_tracking_audit(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> 
     if not is_admin(update):
         return
     await _run_and_reply(update, "tracking_audit", 30, ctx.args or [])
+
+
+async def cmd_ads(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_admin(update):
+        return
+    await _run_and_reply(update, "ads", 7, ctx.args or [])
+
+
+async def cmd_creative(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Usage: /creative <ad_id> [store_slug]. store_slug injects per-family context."""
+    if not is_admin(update):
+        return
+    args = ctx.args or []
+    if not args:
+        await update.message.reply_text("usage: /creative <ad_id> [store_slug]")
+        return
+    ad_id = args[0]
+    slug = args[1] if len(args) > 1 else ""
+
+    status_msg = await update.message.reply_text(f"Analyzing creative `{ad_id}`…", parse_mode=ParseMode.MARKDOWN)
+    try:
+        state = await _graph.ainvoke({"command": "creative", "ad_id": ad_id, "store_slug": slug})
+        reply = state.get("reply_text", "(no reply)")
+    except Exception as e:
+        reply = f"error: {e}"
+
+    # Telegram markdown can break on unescaped chars; send as MARKDOWN but fall back to plain
+    try:
+        await status_msg.edit_text(reply, parse_mode=ParseMode.MARKDOWN)
+    except Exception:
+        await status_msg.edit_text(reply)
