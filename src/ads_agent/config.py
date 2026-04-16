@@ -33,35 +33,49 @@ class Store:
     notes: str = ""
 
 
-# Example store registry — replace with your actual stores before deploying.
-# Each entry maps a short slug (used in Telegram commands) to a Shopify
-# storefront and its linked Meta Ads account.
+# Live store registry — server-only, never committed to public repo.
 STORES: tuple[Store, ...] = (
     Store(
-        slug="store-a",
-        brand="Store A (Example)",
-        shop_domain="your-store-a.myshopify.com",
-        custom_app="store-a",
-        meta_ad_account="act_REPLACE_WITH_YOUR_ACCOUNT_ID",
-        currency="USD",
+        slug="urban",
+        brand="Urban Classics",
+        shop_domain="f51039.myshopify.com",
+        custom_app="urban",
+        meta_ad_account="act_1765937727381511",
+        currency="CAD",
     ),
     Store(
-        slug="store-b-india",
-        brand="Store B (India)",
-        shop_domain="your-store-b.myshopify.com",
-        custom_app="store-b-ind",
-        meta_ad_account="act_REPLACE_WITH_YOUR_ACCOUNT_ID",
+        slug="ayurpet-ind",
+        brand="Ayurpet (India)",
+        shop_domain="1ygbmd-pr.myshopify.com",
+        custom_app="ayurpet-ind",
+        meta_ad_account="act_654879327196107",
         currency="INR",
-        notes="India-market sales. Shares ad account with Store B Global.",
+        notes="India-market. Shares ad account with Ayurpet Global.",
     ),
     Store(
-        slug="store-b-global",
-        brand="Store B (Global)",
-        shop_domain="your-store-b-global.myshopify.com",
-        custom_app="store-b",
-        meta_ad_account="act_REPLACE_WITH_YOUR_ACCOUNT_ID",
+        slug="ayurpet-global",
+        brand="Ayurpet (Global)",
+        shop_domain="2684sq-mt.myshopify.com",
+        custom_app="ayurpet",
+        meta_ad_account="act_654879327196107",
         currency="INR",
-        notes="Global storefront. Same ad account as India; ROAS must be reconciled across both.",
+        notes="Global storefront. Same ad account as India; reconcile ROAS across both.",
+    ),
+    Store(
+        slug="classicoo-1",
+        brand="Classicoo",
+        shop_domain="52j1ga-hz.myshopify.com",
+        custom_app="classicoo",
+        meta_ad_account="act_1231977889107681",
+        currency="CAD",
+    ),
+    Store(
+        slug="classicoo-2",
+        brand="Classicoo (secondary)",
+        shop_domain="5u7mdi-ap.myshopify.com",
+        custom_app="classicoo",
+        meta_ad_account=None,
+        currency="CAD",
     ),
 )
 

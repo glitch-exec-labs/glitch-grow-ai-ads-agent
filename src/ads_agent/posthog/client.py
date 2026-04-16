@@ -1,52 +1,79 @@
-"""PostHog Cloud client wrapper.
+"""PostHog Cloud client — event capture and querying.
 
-Using the managed free tier (1M events/mo) for the full event/attribution/CAPI
-layer — see plan Risk #1 and #9. Self-host path stays open if we outgrow it.
+Project: 384306 / Default project (us.i.posthog.com).
+Capture key set in POSTHOG_API_KEY env var.
 
-PostHog Python SDK is fire-and-forget for ingest; queries go via the HTTP API.
+All capture calls are fire-and-forget (PostHog SDK batches + flushes
+in a background thread). Never blocks the webhook response path.
 """
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 
 import posthog as _posthog
 
 from ads_agent.config import settings
 
+log = logging.getLogger(__name__)
 
-@lru_cache
+
+@lru_cache(maxsize=1)
 def client() -> _posthog.Posthog:
     s = settings()
-    return _posthog.Posthog(
+    ph = _posthog.Posthog(
         project_api_key=s.posthog_api_key,
         host=s.posthog_host,
     )
+    ph.disabled = not s.posthog_api_key or s.posthog_api_key.startswith("phc_REPLACE")
+    return ph
 
 
-def capture_order_completed(
+def capture_order_event(
+    event: str,
     *,
-    distinct_id: str,
     shop_domain: str,
-    order_id: str,
-    value: float,
-    currency: str,
-    utm: dict | None = None,
+    store_slug: str,
+    order: dict,
 ) -> None:
-    """Fire-and-forget `order_completed` event. Feeds PostHog's Meta CAPI destination.
+    """Fire a Shopify order lifecycle event to PostHog.
 
-    distinct_id: prefer customer_id; fall back to anon_id from PostHog cookie if
-    we ever cross-wire the storefront pixel. For webhook-only v1, customer_id.
+    distinct_id: customer_id preferred; falls back to order_id so every
+    event is always person-linked even for guest checkouts.
+
+    Properties included:
+      - shop, store_slug, order_id, order_name        (for joins)
+      - value, currency                                (for revenue maths)
+      - financial_status, fulfillment_status           (for lifecycle)
+      - utm_source/medium/campaign/content             (for attribution)
+      - line_items JSON, tags, source_name             (for product analysis)
     """
-    props = {
+    distinct_id = order.get("customer_id") or order.get("order_id") or "unknown"
+    props: dict = {
         "shop": shop_domain,
-        "order_id": order_id,
-        "value": value,
-        "currency": currency,
+        "store_slug": store_slug,
+        "order_id": order.get("order_id", ""),
+        "order_name": order.get("order_name", ""),
+        "value": order.get("value", 0),
+        "currency": order.get("currency", ""),
+        "financial_status": order.get("financial_status", ""),
+        "fulfillment_status": order.get("fulfillment_status", ""),
+        "source_name": order.get("source_name", ""),
+        "tags": order.get("tags", ""),
     }
-    if utm:
-        props.update({f"utm_{k}": v for k, v in utm.items() if v})
-    client().capture(
-        distinct_id=distinct_id,
-        event="order_completed",
-        properties=props,
-    )
+
+    # Flatten UTM params as top-level properties so PostHog can filter on them
+    for k, v in (order.get("utm") or {}).items():
+        props[f"utm_{k}"] = v
+
+    # Line items as JSON string (PostHog doesn't index nested arrays well)
+    import json
+    li = order.get("line_items") or []
+    if li:
+        props["line_items"] = json.dumps(li)
+        props["line_item_count"] = len(li)
+
+    try:
+        client().capture(distinct_id=distinct_id, event=event, properties=props)
+    except Exception:
+        log.exception("PostHog capture failed event=%s order_id=%s", event, order.get("order_id"))

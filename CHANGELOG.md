@@ -13,7 +13,14 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-16
 
-- **06:00 UTC** — auto-sync: 2026-04-16 06:00 UTC (`74567bc`) — 2 files
+- **06:45 UTC** — auto-sync: 2026-04-16 06:45 UTC (`144d74f`) — 6 files
+        A	ops/scripts/backfill_posthog.py
+        M	ops/scripts/register_webhooks.py
+        M	src/ads_agent/config.py
+        M	src/ads_agent/posthog/client.py
+        M	src/ads_agent/server.py
+        ... (+1 more)
+- **06:00 UTC** — auto-sync: 2026-04-16 06:00 UTC (`65bd9b9`) — 3 files
         A	LICENSE
         M	README.md
 - **05:54 UTC** — Sanitize for public release: remove all client-specific data (`ba18b63`) — 8 files
