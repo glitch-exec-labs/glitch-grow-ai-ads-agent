@@ -30,6 +30,8 @@ async def cmd_help(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "`/tracking_audit <store> [days]` — LLM-picked remediation recipes for tracking gaps\n"
         "`/ads <store> [days]` — top ads by spend, with CTR/CPC/ROAS per ad\n"
         "`/creative <ad_id> [store]` — structured critique of one ad's creative (Gemini vision)\n"
+        "`/ideas <store> [days]` — 5 numbered creative briefs based on winning patterns\n"
+        "`/alerts <store>` — CPC drift, spend anomalies, tracking gaps, premature-kill reminders\n"
         "`/stores` — list configured stores\n"
         "`/help` — this message"
     )
@@ -88,6 +90,18 @@ async def cmd_ads(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update):
         return
     await _run_and_reply(update, "ads", 7, ctx.args or [])
+
+
+async def cmd_ideas(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_admin(update):
+        return
+    await _run_and_reply(update, "ideas", 30, ctx.args or [])
+
+
+async def cmd_alerts(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_admin(update):
+        return
+    await _run_and_reply(update, "alerts", 7, ctx.args or [])
 
 
 async def cmd_creative(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:

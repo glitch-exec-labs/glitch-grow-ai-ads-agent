@@ -12,7 +12,9 @@ from typing import TypedDict
 from langgraph.graph import END, StateGraph
 
 from ads_agent.agent.nodes.ads_leaderboard import ads_leaderboard_node
+from ads_agent.agent.nodes.alerts import alerts_node
 from ads_agent.agent.nodes.creative_critique import creative_critique_node
+from ads_agent.agent.nodes.ideas import ideas_node
 from ads_agent.agent.nodes.pull_insights import pull_insights_node
 from ads_agent.agent.nodes.roas_compute import roas_compute_node
 from ads_agent.agent.nodes.tracking_audit import tracking_audit_node
@@ -35,6 +37,8 @@ def _route(state: AgentState) -> str:
         "tracking_audit": "tracking_audit",
         "ads": "ads_leaderboard",
         "creative": "creative_critique",
+        "ideas": "ideas",
+        "alerts": "alerts",
     }.get(cmd, "pull_insights")
 
 
@@ -45,11 +49,11 @@ def build_graph():
     g.add_node("tracking_audit", tracking_audit_node)
     g.add_node("ads_leaderboard", ads_leaderboard_node)
     g.add_node("creative_critique", creative_critique_node)
+    g.add_node("ideas", ideas_node)
+    g.add_node("alerts", alerts_node)
 
     g.set_conditional_entry_point(_route)
-    g.add_edge("pull_insights", END)
-    g.add_edge("roas_compute", END)
-    g.add_edge("tracking_audit", END)
-    g.add_edge("ads_leaderboard", END)
-    g.add_edge("creative_critique", END)
+    for node in ("pull_insights", "roas_compute", "tracking_audit",
+                 "ads_leaderboard", "creative_critique", "ideas", "alerts"):
+        g.add_edge(node, END)
     return g.compile()

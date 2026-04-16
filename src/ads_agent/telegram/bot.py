@@ -16,8 +16,10 @@ from telegram.ext import AIORateLimiter, Application, CommandHandler
 from ads_agent.config import settings
 from ads_agent.telegram.handlers import (
     cmd_ads,
+    cmd_alerts,
     cmd_creative,
     cmd_help,
+    cmd_ideas,
     cmd_insights,
     cmd_roas,
     cmd_start,
@@ -46,6 +48,8 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("tracking_audit", cmd_tracking_audit))
     app.add_handler(CommandHandler("ads", cmd_ads))
     app.add_handler(CommandHandler("creative", cmd_creative))
+    app.add_handler(CommandHandler("ideas", cmd_ideas))
+    app.add_handler(CommandHandler("alerts", cmd_alerts))
     return app
 
 
