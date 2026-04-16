@@ -13,7 +13,9 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-16
 
-- **21:00 UTC** — auto-sync: 2026-04-16 21:00 UTC (`38772a5`) — 2 files
+- **21:15 UTC** — auto-sync: 2026-04-16 21:15 UTC (`9977021`) — 1 file
+        M	src/ads_agent/meta/graph_client.py
+- **21:00 UTC** — auto-sync: 2026-04-16 21:00 UTC (`0df865e`) — 3 files
         M	src/ads_agent/agent/nodes/roas_compute.py
         M	src/ads_agent/posthog/queries.py
 - **20:45 UTC** — auto-sync: 2026-04-16 20:45 UTC (`31c4007`) — 4 files

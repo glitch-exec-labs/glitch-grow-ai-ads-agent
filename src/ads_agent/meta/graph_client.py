@@ -135,18 +135,31 @@ async def ads_for_account(ad_account_id: str, days: int = 7, limit: int = 200) -
         f"{ad_account_id}/insights",
         {
             "level": "ad",
-            "fields": "ad_id,ad_name,spend,impressions,clicks,ctr,cpc,cpm,actions,action_values,account_currency",
+            "fields": "ad_id,ad_name,spend,impressions,clicks,ctr,cpc,cpm,frequency,reach,actions,action_values,account_currency",
             "limit": limit,
             **time_params,
         },
     )
 
     results: list[dict] = []
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
     for row in insights_body.get("data", []):
         ad_id = row.get("ad_id")
         ad = ad_by_id.get(ad_id, {})
         purchases, purchase_value = _sum_purchases(row)
         spend = float(row.get("spend", 0) or 0)
+
+        # Parse created_time (ISO 8601 with TZ) → days live
+        days_live: float = 0.0
+        created = ad.get("created_time")
+        if created:
+            try:
+                ts = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                days_live = max(0.0, (now - ts).total_seconds() / 86400.0)
+            except Exception:
+                pass
+
         results.append({
             "ad_account_id": ad_account_id,
             "ad_id": ad_id,
@@ -154,6 +167,8 @@ async def ads_for_account(ad_account_id: str, days: int = 7, limit: int = 200) -
             "status": ad.get("status", ""),
             "effective_status": ad.get("effective_status", ""),
             "creative": ad.get("creative", {}),
+            "created_time": created or "",
+            "days_live": days_live,
             "spend": spend,
             "currency": row.get("account_currency", "?"),
             "impressions": int(row.get("impressions", 0) or 0),
@@ -161,6 +176,8 @@ async def ads_for_account(ad_account_id: str, days: int = 7, limit: int = 200) -
             "ctr": float(row.get("ctr", 0) or 0),
             "cpc": float(row.get("cpc", 0) or 0),
             "cpm": float(row.get("cpm", 0) or 0),
+            "frequency": float(row.get("frequency", 0) or 0),
+            "reach": int(row.get("reach", 0) or 0),
             "purchases": purchases,
             "purchase_value": purchase_value,
             "reported_roas": (purchase_value / spend) if spend > 0 else 0.0,
