@@ -1,43 +1,70 @@
-"""LiteLLM-routed model selection.
+"""LLM routing via LiteLLM.
 
-Default policy:
-  - `cheap`    -> Gemini 2.5 Flash (Vertex or AI Studio, whichever creds exist)
-  - `smart`    -> Claude Sonnet 4.5 (Anthropic)
-  - `heavy`    -> Gemini 2.5 Pro for long-reasoning audits (HITL gated)
+Tiers:
+  cheap   -> Gemini 2.5 Flash         (bulk classification, short summaries)
+  smart   -> Gemini 2.5 Pro           (deep reasoning, tracking audits)
+  openai  -> gpt-4o-mini              (fallback / comparison)
 
-Per-node overrides live in agent/graph.py. Keeping the router tiny so swapping
-providers doesn't cascade through tool code.
+Falls back gracefully if a provider key is missing.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import logging
+import os
 
 from ads_agent.config import settings
 
-
-@dataclass(frozen=True)
-class ModelChoice:
-    """litellm `model` string + extra kwargs."""
-
-    model: str
-    kwargs: dict
+log = logging.getLogger(__name__)
 
 
-def pick(tier: str = "cheap") -> ModelChoice:
+def _ensure_env() -> None:
+    """LiteLLM reads keys from env vars. Mirror our Settings values into os.environ."""
+    s = settings()
+    if s.google_api_key and not os.environ.get("GEMINI_API_KEY"):
+        os.environ["GEMINI_API_KEY"] = s.google_api_key
+        os.environ["GOOGLE_API_KEY"] = s.google_api_key
+    if s.openai_api_key and not os.environ.get("OPENAI_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = s.openai_api_key
+    if s.anthropic_api_key and not os.environ.get("ANTHROPIC_API_KEY"):
+        os.environ["ANTHROPIC_API_KEY"] = s.anthropic_api_key
+
+
+def pick(tier: str = "cheap") -> str:
+    """Return a LiteLLM model string."""
     s = settings()
     if tier == "smart":
-        return ModelChoice(model="claude-sonnet-4-5", kwargs={"api_key": s.anthropic_api_key})
-    if tier == "heavy":
-        if s.vertex_project:
-            return ModelChoice(
-                model="vertex_ai/gemini-2.5-pro",
-                kwargs={"vertex_project": s.vertex_project, "vertex_location": s.vertex_location},
-            )
-        return ModelChoice(model="gemini/gemini-2.5-pro", kwargs={"api_key": s.google_api_key})
-    # default cheap
-    if s.vertex_project:
-        return ModelChoice(
-            model="vertex_ai/gemini-2.5-flash",
-            kwargs={"vertex_project": s.vertex_project, "vertex_location": s.vertex_location},
+        if s.google_api_key:
+            return "gemini/gemini-2.5-pro"
+        if s.openai_api_key:
+            return "openai/gpt-4o"
+        return "openai/gpt-4o-mini"
+    if tier == "openai":
+        return "openai/gpt-4o-mini"
+    # cheap default
+    if s.google_api_key:
+        return "gemini/gemini-2.5-flash"
+    return "openai/gpt-4o-mini"
+
+
+async def complete(prompt: str, *, tier: str = "cheap", system: str | None = None, max_tokens: int = 800) -> str:
+    """One-shot text completion. Returns the text content."""
+    _ensure_env()
+    import litellm
+
+    model = pick(tier)
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    try:
+        resp = await litellm.acompletion(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=0.3,
         )
-    return ModelChoice(model="gemini/gemini-2.5-flash", kwargs={"api_key": s.google_api_key})
+        return resp.choices[0].message.content or ""
+    except Exception as e:
+        log.exception("LLM call failed (model=%s)", model)
+        return f"(LLM error: {e})"

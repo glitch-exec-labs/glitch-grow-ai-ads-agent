@@ -1,21 +1,27 @@
-"""Telegram bot bootstrap.
+"""Telegram bot — used in webhook mode inside the FastAPI server.
 
-Runs as its own systemd service on the VM (NOT inside Cloud Run), because
-reconciliation / MCP calls need localhost access to 127.0.0.1:3103 and
-127.0.0.1:5432.
+Usage pattern:
+  - `build_app()` returns a configured `telegram.ext.Application` (not started).
+  - `server.py` calls `app.initialize()` + `app.start()` on FastAPI startup.
+  - Incoming POST /telegram/webhook → parsed into Update → app.update_queue.put(update)
 
-Use webhook mode behind nginx (your PUBLIC_BASE_URL -> 127.0.0.1:3110 or whatever local port you run on).
-For v0 local dev, long-poll mode is fine; flip via env.
+For local polling (dev only): `python -m ads_agent.telegram.bot`.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 
-from telegram.ext import Application, AIORateLimiter, CommandHandler
+from telegram.ext import AIORateLimiter, Application, CommandHandler
 
 from ads_agent.config import settings
-from ads_agent.telegram.handlers import cmd_help, cmd_insights, cmd_start, cmd_stores
+from ads_agent.telegram.handlers import (
+    cmd_help,
+    cmd_insights,
+    cmd_roas,
+    cmd_start,
+    cmd_stores,
+    cmd_tracking_audit,
+)
 
 log = logging.getLogger(__name__)
 
@@ -34,11 +40,13 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("stores", cmd_stores))
     app.add_handler(CommandHandler("insights", cmd_insights))
+    app.add_handler(CommandHandler("roas", cmd_roas))
+    app.add_handler(CommandHandler("tracking_audit", cmd_tracking_audit))
     return app
 
 
 def run_polling() -> None:
-    """Local dev entrypoint: `python -m ads_agent.telegram.bot`."""
+    """Local dev entrypoint only — `python -m ads_agent.telegram.bot`."""
     logging.basicConfig(level=settings().log_level)
     app = build_app()
     app.run_polling()

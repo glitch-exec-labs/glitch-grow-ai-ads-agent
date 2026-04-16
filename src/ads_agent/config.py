@@ -155,6 +155,7 @@ class Settings(BaseSettings):
     # LLMs (LiteLLM routes to these)
     anthropic_api_key: str = ""
     google_api_key: str = ""
+    openai_api_key: str = ""
     vertex_project: str = ""
     vertex_location: str = "us-central1"
 

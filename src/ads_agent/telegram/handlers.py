@@ -1,10 +1,4 @@
-"""Telegram command handlers. Each command invokes the LangGraph agent and
-posts the resulting `reply_text`.
-
-v0 commands wired: /start, /help, /stores, /insights.
-v1 adds: /roas, /tracking_audit, /scopes_check, /daily_digest_toggle.
-v2 adds: /ads (HITL-gated write-actions).
-"""
+"""Telegram command handlers — all commands invoke the LangGraph agent."""
 from __future__ import annotations
 
 from telegram import Update
@@ -12,7 +6,7 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 from ads_agent.agent.graph import build_graph
-from ads_agent.config import STORES
+from ads_agent.config import STORES, get_store
 from ads_agent.telegram.auth import is_admin
 
 _graph = build_graph()
@@ -22,7 +16,7 @@ async def cmd_start(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update):
         return
     await update.message.reply_text(
-        "Glitch Grow Ads Agent. Try /help for commands."
+        "Glitch Grow Ads Agent is live. Try /help for commands."
     )
 
 
@@ -30,11 +24,14 @@ async def cmd_help(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update):
         return
     msg = (
-        "/stores — list configured stores\n"
-        "/insights <store> [days]  — GMV / AOV / order count\n"
-        "/help — this message"
+        "*Commands*\n\n"
+        "`/insights <store> [days]` — order counts, revenue, AOV, coverage\n"
+        "`/roas <store> [days]` — true ROAS vs Meta-reported, spend across all linked accounts\n"
+        "`/tracking_audit <store> [days]` — LLM-picked remediation recipes for tracking gaps\n"
+        "`/stores` — list configured stores\n"
+        "`/help` — this message"
     )
-    await update.message.reply_text(msg)
+    await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
 
 async def cmd_stores(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -44,16 +41,42 @@ async def cmd_stores(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 
+async def _run_and_reply(update: Update, command: str, days_default: int, args: list[str]) -> None:
+    if not args:
+        await update.message.reply_text(f"usage: /{command} <store> [days]")
+        return
+    slug = args[0]
+    days = int(args[1]) if len(args) > 1 and args[1].isdigit() else days_default
+
+    if get_store(slug) is None:
+        await update.message.reply_text(f"Unknown store `{slug}`. /stores for list.", parse_mode=ParseMode.MARKDOWN)
+        return
+
+    # Placeholder "working..." so the user sees activity during LLM calls
+    status_msg = await update.message.reply_text(f"Running /{command} {slug} {days}d…")
+
+    try:
+        state = await _graph.ainvoke({"command": command, "store_slug": slug, "days": days})
+        reply = state.get("reply_text", "(no reply)")
+    except Exception as e:
+        reply = f"error: {e}"
+
+    await status_msg.edit_text(reply, parse_mode=ParseMode.MARKDOWN)
+
+
 async def cmd_insights(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update):
         return
-    args = ctx.args or []
-    if not args:
-        await update.message.reply_text("usage: /insights <store> [days]")
-        return
-    slug = args[0]
-    days = int(args[1]) if len(args) > 1 and args[1].isdigit() else 7
+    await _run_and_reply(update, "insights", 7, ctx.args or [])
 
-    state = await _graph.ainvoke({"command": "insights", "store_slug": slug, "days": days})
-    reply = state.get("reply_text", "(no reply)")
-    await update.message.reply_text(reply, parse_mode=ParseMode.MARKDOWN)
+
+async def cmd_roas(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_admin(update):
+        return
+    await _run_and_reply(update, "roas", 7, ctx.args or [])
+
+
+async def cmd_tracking_audit(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_admin(update):
+        return
+    await _run_and_reply(update, "tracking_audit", 30, ctx.args or [])

@@ -1,13 +1,13 @@
-"""pull_insights: deterministic Shopify summary for a store + lookback window.
+"""pull_insights: store-level rollup over a lookback window.
 
-v0: called by /insights Telegram command. No LLM — just SQL/GraphQL roll-up.
-v1: gains LLM summarization via ads_agent.agent.llm.pick('cheap').
+Reads from PostHog (authoritative order data) — NOT from Shopify Admin, so we
+don't hit rate limits and can answer fast. PostHog is already populated by
+webhook-receiver in real time plus the 90-day backfill.
 """
 from __future__ import annotations
 
 from ads_agent.config import get_store
-from ads_agent.shopify.admin_gql import ORDERS_LAST_N_DAYS, ShopifyAdminClient
-from ads_agent.shopify.sessions import get_session
+from ads_agent.posthog.queries import store_insights
 
 
 async def pull_insights_node(state: dict) -> dict:
@@ -15,50 +15,22 @@ async def pull_insights_node(state: dict) -> dict:
     days = int(state.get("days", 7))
     store = get_store(slug)
     if store is None:
-        return {**state, "reply_text": f"unknown store: {slug}"}
+        return {**state, "reply_text": f"Unknown store: `{slug}`. Try /stores."}
 
-    sess = await get_session(store.shop_domain)
-    if sess is None:
-        return {**state, "reply_text": f"no Shopify session found for {store.shop_domain}"}
+    r = await store_insights(store.slug, days)
 
-    client = ShopifyAdminClient(store.shop_domain, sess.access_token)
-    data = await client.query(
-        ORDERS_LAST_N_DAYS,
-        variables={
-            "query": f"created_at:>-{days}d",
-            "first": 250,
-            "after": None,
-        },
-    )
-    edges = data.get("orders", {}).get("edges", [])
+    if r.unique_orders == 0:
+        reply = f"*{store.brand}* · last {days}d\nNo orders in this window."
+    else:
+        aov = (r.paid_revenue / r.paid_orders) if r.paid_orders else 0.0
+        lines = [
+            f"*{store.brand}* ({store.shop_domain}) · last {days}d",
+            f"Orders: {r.unique_orders}  (paid {r.paid_orders}, pending {r.pending_orders}, cancelled {r.cancelled_orders}, refunded {r.refunded_orders})",
+            f"Paid revenue: {r.paid_revenue:,.2f} {store.currency}",
+            f"AOV (paid): {aov:,.2f} {store.currency}",
+            f"Email coverage: {r.email_coverage_pct}%",
+            f"UTM coverage: {r.utm_coverage_pct}%" + (f" (top: {r.top_utm_source})" if r.top_utm_source else ""),
+        ]
+        reply = "\n".join(lines)
 
-    count = len(edges)
-    gross = 0.0
-    currency = store.currency
-    for e in edges:
-        node = e["node"]
-        amt = node.get("currentTotalPriceSet", {}).get("shopMoney", {}).get("amount")
-        if amt is not None:
-            gross += float(amt)
-        currency = (
-            node.get("currentTotalPriceSet", {}).get("shopMoney", {}).get("currencyCode")
-            or currency
-        )
-
-    aov = (gross / count) if count else 0.0
-    summary = {
-        "store_slug": slug,
-        "shop_domain": store.shop_domain,
-        "days": days,
-        "order_count": count,
-        "gross_revenue": round(gross, 2),
-        "currency": currency,
-        "avg_order_value": round(aov, 2),
-    }
-    reply = (
-        f"*{store.brand}* ({store.shop_domain}) — last {days}d\n"
-        f"Orders: {count}\n"
-        f"Revenue: {gross:,.2f} {currency}\n"
-        f"AOV: {aov:,.2f} {currency}"
-    )
-    return {**state, "orders_summary": summary, "reply_text": reply}
+    return {**state, "orders_summary": r.__dict__, "reply_text": reply}
