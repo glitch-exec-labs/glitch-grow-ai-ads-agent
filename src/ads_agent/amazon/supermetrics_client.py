@@ -103,26 +103,32 @@ async def query(
     start_date: str | None = None,
     end_date: str | None = None,
     max_rows: int = 1000,
+    settings: dict | None = None,
+    report_type: str | None = None,
     extra: dict | None = None,
-    timeout_s: float = 180.0,
+    timeout_s: float = 360.0,
 ) -> list[dict]:
     """Run a Supermetrics data query. Returns a list of row dicts.
 
-    Amazon Ads queries hit Amazon's async report API and can take 60-180s.
-    Supermetrics waits on our connection and then streams results back.
+    Amazon Ads queries hit Amazon's async report API. Supermetrics own telemetry
+    reports run_seconds ~120–180 per account/report_type. Budget 5 minutes per call.
+
+    Required for Amazon Ads: `report_type` must be one of
+    SponsoredProduct / SponsoredBrands / SponsoredDisplay / DSP.
+    Each report type is a separate API call; a single ad account typically has
+    data under several. Missing report_type → empty results or error.
 
     Query params:
-      ds_login = the per-login identifier `dsl_*` (NOT ds_user — that was our
-        earlier misread of the API).
-      fields = list or comma-separated string of field IDs.
-      date_range_type = last_7_days / last_30_days / last_90_days / custom.
+      login_id accepts either `dsl_*` OR the account's email address — both work.
+      fields = list or comma-separated string of field IDs (Supermetrics normalises case).
+      date_range_type = yesterday / last_7_days / last_30_days / last_90_days / custom.
     """
     if isinstance(fields, list):
         fields = ",".join(fields)
 
     q: dict = {
         "ds_id": ds_id,
-        "ds_login": login_id,
+        "ds_user": login_id,
         "ds_accounts": account_id,
         "fields": fields,
         "date_range_type": date_range_type,
@@ -133,6 +139,14 @@ async def query(
             raise SupermetricsError("custom date_range_type needs start_date + end_date")
         q["start_date"] = start_date
         q["end_date"] = end_date
+
+    # settings block (report_type, etc.)
+    effective_settings = dict(settings or {})
+    if report_type:
+        effective_settings["report_type"] = report_type
+    if effective_settings:
+        q["settings"] = effective_settings
+
     if extra:
         q.update(extra)
 
@@ -175,22 +189,26 @@ async def query(
 
 # Amazon Seller Central (ASELL) — only `Sessions` confirmed valid; other obvious
 # field names (UnitsOrdered, Orders, TotalOrderItems, OrderedProductSales) were
-# all rejected. Supermetrics's ASELL schema uses different names we haven't
-# discovered yet. Keep minimal for now; revisit with docs.
-DEFAULT_SELLER_FIELDS = ["Date", "Sessions"]
+# all rejected. Supermetrics ASELL likely needs its own `report_type` in settings.
+# Keep minimal until schema is resolved.
+DEFAULT_SELLER_FIELDS = ["date", "sessions"]
 
-# Canonical Amazon Ads (AA) fields — verified valid 2026-04-16
-# Note: Supermetrics uses "Cost" not "Spend".
+# Amazon Ads (AA) fields — Supermetrics uses lowercase canonical form
+# (uppercase also accepted as alias, but lowercase is what /apidoc shows).
+# "cost" NOT "spend". Requires `settings.report_type` per query.
 DEFAULT_ADS_FIELDS = [
-    "Date",
-    "Impressions",
-    "Clicks",
-    "Cost",
-    "Sales",
-    "Orders",
-    "ACOS",
-    "ROAS",
+    "date",
+    "impressions",
+    "clicks",
+    "cost",
+    "sales",
+    "orders",
+    "acos",
+    "roas",
 ]
+
+# Amazon Ads report types (one query per type per account)
+REPORT_TYPES = ["SponsoredProduct", "SponsoredBrands", "SponsoredDisplay"]
 
 
 async def seller_stats(
@@ -226,8 +244,18 @@ async def ads_stats(
     return await _gather_account_queries(accounts, None, DEFAULT_ADS_FIELDS, date_range_type)
 
 
-async def _one_account_query(acct: dict, ds_id: str | None, fields: list[str], date_range_type: str) -> list[dict]:
-    """Query one account; on timeout/error, return [] and log — never raise."""
+async def _one_account_query(
+    acct: dict,
+    ds_id: str | None,
+    fields: list[str],
+    date_range_type: str,
+) -> list[dict]:
+    """Query one account; on timeout/error, return [] and log — never raise.
+
+    `report_type` is read off the per-account entry in AMAZON_ACCOUNTS_JSON so
+    different accounts can query different report flavors (SponsoredProduct,
+    SponsoredBrands, etc.) without a global setting.
+    """
     effective_ds = ds_id or acct["ds_id"]
     try:
         rows = await query(
@@ -236,7 +264,8 @@ async def _one_account_query(acct: dict, ds_id: str | None, fields: list[str], d
             account_id=acct["account_id"],
             fields=fields,
             date_range_type=date_range_type,
-            timeout_s=240.0,
+            report_type=acct.get("report_type"),
+            timeout_s=360.0,
         )
     except (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.TimeoutException):
         log.warning("Supermetrics query timed out for %s (%s)", acct.get("name"), acct["account_id"])
@@ -250,6 +279,7 @@ async def _one_account_query(acct: dict, ds_id: str | None, fields: list[str], d
     for r in rows:
         r["_marketplace"] = acct.get("name", acct["account_id"])
         r["_account_id"] = acct["account_id"]
+        r["_report_type"] = acct.get("report_type", "default")
     return rows
 
 

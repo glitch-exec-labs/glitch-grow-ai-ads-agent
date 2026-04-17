@@ -49,22 +49,30 @@ async def amazon_insights_node(state: dict) -> dict:
         lines.append("")
 
     if seller_rows:
-        # aggregate by marketplace
+        # aggregate by marketplace. Supermetrics ASELL returns the column name
+        # as seen in the UI (e.g. "Sessions - total"), so we tolerate case + suffix variants.
+        def _f(row: dict, *keys: str) -> float:
+            for k in keys:
+                for rk, v in row.items():
+                    if rk.lower().startswith(k.lower()):
+                        try:
+                            return float(v or 0)
+                        except (TypeError, ValueError):
+                            return 0
+            return 0
+
         by_mp: dict[str, dict] = {}
         for r in seller_rows:
             mp = r["_marketplace"]
-            b = by_mp.setdefault(mp, {"sales": 0.0, "units": 0, "orders": 0, "sessions": 0})
-            b["sales"] += float(r.get("OrderedProductSales", 0) or 0)
-            b["units"] += int(r.get("UnitsOrdered", 0) or 0)
-            b["orders"] += int(r.get("TotalOrderItems", 0) or 0)
-            b["sessions"] += int(r.get("Sessions", 0) or 0)
+            b = by_mp.setdefault(mp, {"sessions": 0.0})
+            b["sessions"] += _f(r, "sessions")
         lines.append("*Seller Central (per marketplace)*")
         for mp, b in by_mp.items():
-            conv = (b["orders"] / b["sessions"] * 100) if b["sessions"] else 0
-            lines.append(
-                f"• {mp}: {b['units']} units · {b['orders']} order-items · "
-                f"revenue {b['sales']:,.2f} · sessions {b['sessions']:,} · conv {conv:.2f}%"
-            )
+            lines.append(f"• {mp}: sessions {b['sessions']:,.0f}")
+        lines.append(
+            "  _(Seller Central schema discovery partial — only `Sessions` validated. "
+            "Revenue + unit fields need Supermetrics docs lookup.)_"
+        )
         lines.append("")
 
     # Amazon Ads
@@ -77,16 +85,25 @@ async def amazon_insights_node(state: dict) -> dict:
             lines.append("")
 
     if ads_rows:
+        def _f(row: dict, *keys: str) -> float:
+            for k in keys:
+                for rk, v in row.items():
+                    if rk.lower() == k.lower():
+                        try:
+                            return float(v or 0)
+                        except (TypeError, ValueError):
+                            return 0
+            return 0
+
         by_acct: dict[str, dict] = {}
         for r in ads_rows:
             k = r["_marketplace"]
             b = by_acct.setdefault(k, {"cost": 0.0, "sales": 0.0, "impr": 0, "clicks": 0, "orders": 0})
-            # Supermetrics Amazon Ads field is "Cost" (not "Spend")
-            b["cost"] += float(r.get("Cost", 0) or 0)
-            b["sales"] += float(r.get("Sales", 0) or 0)
-            b["impr"] += int(r.get("Impressions", 0) or 0)
-            b["clicks"] += int(r.get("Clicks", 0) or 0)
-            b["orders"] += int(r.get("Orders", 0) or 0)
+            b["cost"] += _f(r, "cost", "Cost")
+            b["sales"] += _f(r, "sales", "Sales")
+            b["impr"] += _f(r, "impressions", "Impressions")
+            b["clicks"] += _f(r, "clicks", "Clicks")
+            b["orders"] += _f(r, "orders", "Orders")
 
         # Sort by cost desc so top-spend markets surface first
         ordered = sorted(by_acct.items(), key=lambda kv: kv[1]["cost"], reverse=True)
