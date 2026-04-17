@@ -32,8 +32,13 @@ Built for e-commerce brands running multiple Shopify storefronts and Meta Ads ca
 
 ### Meta Ads Integration
 - **True ROAS** calculation: Shopify revenue ÷ Meta spend (not Meta's own reported ROAS, which over-counts)
-- Campaign, ad set, and ad-level spend breakdown via [meta-ads-mcp](https://github.com/pipeboard-co/meta-ads-mcp)
+- Campaign, ad set, and ad-level spend breakdown via [glitch-ads-mcp](https://github.com/glitch-exec-labs/glitch-ads-mcp) (our fork of meta-ads-mcp, port 3103)
 - Cross-account support — single agent, multiple Meta ad accounts
+
+### Amazon (via sibling MCP)
+- Amazon Seller Central + Amazon Ads data flows through [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) (port 3105)
+- Runs in **Supermetrics-fallback mode** until our native Amazon Ads LWA app is approved; switches to native SP-API without agent changes once approved
+- Agent reads from a nightly Postgres cache (`ads_agent.amazon_daily`) because live Amazon Reports API queries take 2–3 minutes — unfit for inline Telegram replies
 
 ### Tracking Reconciliation & Audit
 - **Order match rate**: joins Shopify orders to Meta conversion events by `order_id`
@@ -53,6 +58,19 @@ Built for e-commerce brands running multiple Shopify storefronts and Meta Ads ca
 - Never touches Meta without an explicit human approval in the approval chain
 
 ---
+
+## Three-repo fleet
+
+This agent doesn't hold every integration itself — it delegates per-platform
+work to sibling MCP servers maintained in their own repos. Clean separation
+makes it easy to swap a data source (e.g. Amazon Supermetrics → native LWA)
+without redeploying the agent.
+
+| Repo | Role | Port | Status |
+|---|---|---|---|
+| **glitch-grow-ads-agent** (this repo) | LangGraph agent, Telegram bot, PostHog attribution, memory | `3110` | v1 live |
+| [glitch-ads-mcp](https://github.com/glitch-exec-labs/glitch-ads-mcp) | Meta Ads (fork of pipeboard's meta-ads-mcp) | `3103` | live |
+| [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) | Amazon Seller Central + Amazon Ads + attribution bridge. Runs in Supermetrics-fallback mode until LWA approval | `3105` | live (fallback mode) |
 
 ## Architecture
 
