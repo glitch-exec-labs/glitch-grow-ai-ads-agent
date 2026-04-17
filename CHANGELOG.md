@@ -13,7 +13,10 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-17
 
-- **19:15 UTC** — auto-sync: 2026-04-17 19:15 UTC (`1f90e8f`) — 1 file
+- **22:00 UTC** — auto-sync: 2026-04-17 22:00 UTC (`dcfef08`) — 2 files
+        A	ops/scripts/migrate_airbyte_amazon_view_v2.sql
+        M	src/ads_agent/agent/nodes/amazon_insights.py
+- **19:15 UTC** — auto-sync: 2026-04-17 19:15 UTC (`797bc7d`) — 2 files
         A	ops/scripts/migrate_airbyte_amazon_view.sql
 - **02:26 UTC** — chore: add gitleaks pre-commit hook (`bb4bbe8`) — 1 file
     Blocks commits containing API keys, tokens, or other secrets.
