@@ -211,6 +211,16 @@ DEFAULT_ADS_FIELDS = [
 REPORT_TYPES = ["SponsoredProduct", "SponsoredBrands", "SponsoredDisplay"]
 
 
+def _days_to_range(days: int) -> str:
+    """Map a day-count to a Supermetrics `date_range_type` string."""
+    if days == 1:
+        return "yesterday"
+    if days in (7, 14, 30, 90):
+        return f"last_{days}_days"
+    # Fall back to custom — caller must supply start_date + end_date.
+    return "custom"
+
+
 async def seller_stats(
     store_slug: str,
     *,
@@ -221,7 +231,7 @@ async def seller_stats(
     if not accounts:
         raise SupermetricsError(f"no Amazon Seller accounts mapped for store {store_slug!r}")
 
-    date_range_type = f"last_{days}_days" if days in (7, 14, 30, 90) else "custom"
+    date_range_type = _days_to_range(days)
     return await _gather_account_queries(accounts, "ASELL", DEFAULT_SELLER_FIELDS, date_range_type)
 
 
@@ -240,7 +250,7 @@ async def ads_stats(
     if not accounts:
         raise SupermetricsError(f"no Amazon Ads accounts mapped for store {store_slug!r}")
 
-    date_range_type = f"last_{days}_days" if days in (7, 14, 30, 90) else "custom"
+    date_range_type = _days_to_range(days)
     return await _gather_account_queries(accounts, None, DEFAULT_ADS_FIELDS, date_range_type)
 
 
