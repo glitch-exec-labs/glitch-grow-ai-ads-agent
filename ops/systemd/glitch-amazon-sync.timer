@@ -1,0 +1,13 @@
+[Unit]
+Description=Nightly Amazon cache sync — fires daily at 02:00 IST (20:30 UTC)
+Requires=glitch-amazon-sync.service
+
+[Timer]
+OnCalendar=*-*-* 20:30:00 UTC
+# Run missed sync if the box was off during the scheduled time
+Persistent=true
+# Random jitter so concurrent boxes don't hammer Supermetrics simultaneously
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

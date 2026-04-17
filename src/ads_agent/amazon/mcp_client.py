@@ -1,27 +1,26 @@
 """Thin HTTP client for the amazon-ads-mcp MCP server (port 3105, streamable-http).
 
 All Amazon data access goes through this — the agent does NOT talk to
-Supermetrics or Amazon APIs directly any more. The MCP server owns both the
-native Amazon Ads API (pending approval) and the Supermetrics fallback.
+Supermetrics or Amazon APIs directly. The MCP server owns both the native
+Amazon Ads API (pending approval) and the Supermetrics fallback.
 
-Why an MCP call rather than in-process function:
-  - amazon-ads-mcp is a separable service maintained by its own repo
-    (glitch-exec-labs/amazon-ads-mcp). Same pattern as glitch-ads-mcp for
-    Meta Ads.
-  - Swap from Supermetrics → native LWA is a server-side config change, no
-    agent redeploy.
+Uses the official `mcp` SDK (streamable-http transport). The SDK handles the
+session lifecycle (initialize → notifications/initialized → tools/call) which
+we'd otherwise have to implement manually.
 
-Transport: streamable-http with JSON-RPC 2.0 body. We call tools via
-`tools/call` with a specific `name` and `arguments` blob.
+Slow path — some tools (supermetrics_ads_performance) hit Amazon's async
+Reports API and take 2-3 minutes. Caller should run these from background
+jobs, not inline in a user-facing handler.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
-import uuid
 from typing import Any
 
-import httpx
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 
 log = logging.getLogger(__name__)
 
@@ -32,62 +31,46 @@ class AmazonMcpError(RuntimeError):
     pass
 
 
-async def call_tool(tool_name: str, arguments: dict[str, Any] | None = None, *, timeout_s: float = 360.0) -> Any:
-    """Invoke one tool on amazon-ads-mcp. Returns the tool's result dict.
-
-    Slow path — some tools (supermetrics_ads_performance) hit Amazon's async
-    Reports API and take 2–3 minutes. Caller should run these from background
-    jobs, not inline in a user-facing handler.
-    """
-    payload = {
-        "jsonrpc": "2.0",
-        "id": str(uuid.uuid4()),
-        "method": "tools/call",
-        "params": {
-            "name": tool_name,
-            "arguments": arguments or {},
-        },
-    }
-    headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-    }
-    async with httpx.AsyncClient(timeout=timeout_s) as client:
-        r = await client.post(DEFAULT_URL, json=payload, headers=headers)
-    if r.status_code >= 400:
-        raise AmazonMcpError(f"MCP HTTP {r.status_code}: {r.text[:200]}")
-
-    # Streamable-HTTP returns either JSON or SSE frames; MCP JSON-RPC
-    # envelope shape is the same either way. Try JSON first, then parse SSE.
-    try:
-        body = r.json()
-    except Exception:
-        # SSE frames: `event: message\ndata: {...}\n\n`. Extract the last data line.
-        text = r.text or ""
-        body = None
-        for line in text.splitlines():
-            if line.startswith("data:"):
-                try:
-                    import json
-                    body = json.loads(line[5:].strip())
-                except Exception:
-                    continue
-        if body is None:
-            raise AmazonMcpError(f"could not parse MCP response: {text[:200]}")
-
-    if "error" in body:
-        err = body["error"]
-        raise AmazonMcpError(f"MCP error {err.get('code')}: {err.get('message')}")
-    result = body.get("result") or {}
-    # FastMCP wraps tool returns in {"content": [{"type":"text","text": "<json-string>"}]}
-    # Unwrap to the original dict.
-    content = result.get("content")
+def _unwrap(result: Any) -> Any:
+    """FastMCP wraps returns as `{"content": [{"type":"text","text":"<json>"}]}`.
+    Unwrap into the native Python object so callers don't need to know."""
+    content = getattr(result, "content", None)
+    if content is None and isinstance(result, dict):
+        content = result.get("content")
     if isinstance(content, list) and content:
         first = content[0]
-        if isinstance(first, dict) and first.get("type") == "text":
-            import json
+        text = getattr(first, "text", None)
+        if text is None and isinstance(first, dict):
+            text = first.get("text")
+        if text is not None:
             try:
-                return json.loads(first["text"])
+                return json.loads(text)
             except Exception:
-                return {"text": first["text"]}
-    return result
+                return {"text": text}
+    # Already structured
+    sc = getattr(result, "structuredContent", None)
+    if sc:
+        return sc
+    if isinstance(result, dict):
+        return result
+    return {}
+
+
+async def call_tool(
+    tool_name: str,
+    arguments: dict[str, Any] | None = None,
+    *,
+    url: str | None = None,
+    timeout_s: float = 420.0,
+) -> Any:
+    """Invoke one tool on amazon-ads-mcp. Returns the tool's result dict."""
+    target = url or DEFAULT_URL
+    # streamablehttp_client takes the raw URL; session is opened + init automatically
+    async with streamablehttp_client(target) as (read_stream, write_stream, _meta):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            try:
+                result = await session.call_tool(tool_name, arguments or {})
+            except Exception as e:
+                raise AmazonMcpError(f"{tool_name}: {e}") from e
+    return _unwrap(result)
