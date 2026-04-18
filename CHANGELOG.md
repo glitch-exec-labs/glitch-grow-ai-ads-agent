@@ -11,9 +11,20 @@ Body text (if present) shown as indented sub-bullets.
 
 ---
 
+## 2026-04-18
+
+- **21:15 UTC** — auto-sync: 2026-04-18 21:15 UTC (`1f1ab49`) — 1 file
+        A	ops/scripts/migrate_airbyte_amazon_financials_view.sql
+- **00:27 UTC** — chore: update license contact to support@glitchexecutor.com (`e182404`) — 2 files
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+- **00:25 UTC** — chore: relicense from MIT to BSL 1.1 (`22e0e11`) — 2 files
+    License converts to Apache 2.0 on 2030-04-18. Production use permitted
+    except for offering as a competing hosted/embedded product.
+    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
 ## 2026-04-17
 
-- **23:00 UTC** — auto-sync: 2026-04-17 23:00 UTC (`fb9669d`) — 1 file
+- **23:00 UTC** — auto-sync: 2026-04-17 23:00 UTC (`e434a16`) — 2 files
         A	ops/scripts/migrate_airbyte_amazon_view_v3.sql
 - **22:00 UTC** — auto-sync: 2026-04-17 22:00 UTC (`ffe323d`) — 3 files
         A	ops/scripts/migrate_airbyte_amazon_view_v2.sql
