@@ -13,7 +13,10 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-19
 
-- **01:45 UTC** — auto-sync: 2026-04-19 01:45 UTC (`31077b6`) — 4 files
+- **02:00 UTC** — auto-sync: 2026-04-19 02:00 UTC (`78a14ed`) — 2 files
+        M	ops/scripts/migrate_airbyte_amazon_sku_view.sql
+        M	src/ads_agent/agent/nodes/amazon_insights.py
+- **01:45 UTC** — auto-sync: 2026-04-19 01:45 UTC (`9e10147`) — 5 files
         A	ops/scripts/migrate_airbyte_amazon_sku_view.sql
         A	ops/scripts/migrate_airbyte_amazon_view_v4.sql
         A	ops/scripts/migrate_airbyte_amazon_view_v5.sql

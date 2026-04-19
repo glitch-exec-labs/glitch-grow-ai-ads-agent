@@ -144,8 +144,8 @@ ads_agg AS (
         sum(pa."impressions")::bigint                AS ads_impressions,
         sum(pa."clicks")::bigint                     AS ads_clicks,
         sum(pa."unitsSoldClicks1d")::bigint          AS ads_units_1d
-    FROM airbyte_amazon."c0rakm_sponsored_products_productads_report_stream_daily" pa
-    JOIN airbyte_amazon."c0rakm_sponsored_product_ads" a
+    FROM productads_dedup pa
+    JOIN ads_meta_dedup a
       ON a."adId"::text = pa."adId"::text
     WHERE pa."profileId" IN (2849798098183833, 75561079299164)
       AND a."sku" IS NOT NULL

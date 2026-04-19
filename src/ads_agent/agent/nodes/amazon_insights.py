@@ -48,21 +48,6 @@ async def amazon_insights_node(state: dict) -> dict:
                ORDER BY source, sales DESC NULLS LAST, cost DESC NULLS LAST""",
             slug, days,
         )
-        fin = await conn.fetchrow(
-            """SELECT SUM(gross_revenue)        AS gross,
-                      SUM(fees)                 AS fees,
-                      SUM(refunds)              AS refunds,
-                      SUM(refund_fee_reversal)  AS refund_fee_reversal,
-                      SUM(ads_deducted)         AS ads_deducted,
-                      SUM(service_fees)         AS service_fees,
-                      SUM(net_amount)           AS net,
-                      MAX(currency)             AS currency,
-                      COUNT(*)                  AS days_settled
-               FROM ads_agent.amazon_financials_daily_v
-               WHERE store_slug = $1
-                 AND date > (CURRENT_DATE - ($2::int * INTERVAL '1 day'))""",
-            slug, days,
-        )
     except asyncpg.UndefinedTableError:
         return {**state, "reply_text": (
             f"*{store.brand}* · Amazon insights\n\n"
@@ -133,29 +118,6 @@ async def amazon_insights_node(state: dict) -> dict:
         lines.append(
             "  — Airbyte ad report streams may still be backfilling, or the Ads "
             "source config needs widening. Check `airbyte_amazon.sponsored_*` tables."
-        )
-        lines.append("")
-
-    # ── Net Profit (settlement-basis, from Finances API) ──────────────────────
-    # Keyed on PostedDate (when money hits the settlement ledger), NOT PurchaseDate.
-    # So totals here may diverge from Seller Central Orders above by a few days' lag.
-    if fin and fin["net"] is not None:
-        ccy = fin["currency"] or ""
-        gross = float(fin["gross"] or 0)
-        fees  = float(fin["fees"]  or 0)
-        refs  = float(fin["refunds"] or 0)
-        ads_d = float(fin["ads_deducted"] or 0)
-        svc   = float(fin["service_fees"] or 0)
-        net   = float(fin["net"] or 0)
-        margin = (net / gross * 100) if gross else 0
-        lines.append("*Net Profit (settlement-basis, Finances API)*")
-        lines.append(
-            f"  net {net:,.2f} {ccy} on gross {gross:,.2f} "
-            f"({margin:.1f}% margin · {fin['days_settled']} settled days)"
-        )
-        lines.append(
-            f"  fees {fees:,.2f} · refunds {refs:,.2f} · "
-            f"ads {ads_d:,.2f} · service {svc:,.2f}"
         )
         lines.append("")
 
