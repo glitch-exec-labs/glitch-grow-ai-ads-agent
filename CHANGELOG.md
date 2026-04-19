@@ -13,7 +13,9 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-19
 
-- **03:45 UTC** — auto-sync: 2026-04-19 03:45 UTC (`9dc2d82`) — 5 files
+- **04:45 UTC** — auto-sync: 2026-04-19 04:45 UTC (`9454635`) — 1 file
+        M	README.md
+- **03:45 UTC** — auto-sync: 2026-04-19 03:45 UTC (`b7895b7`) — 6 files
         A	ops/scripts/migrate_amazon_attribution_view.sql
         M	src/ads_agent/agent/graph.py
         A	src/ads_agent/agent/nodes/attribution.py

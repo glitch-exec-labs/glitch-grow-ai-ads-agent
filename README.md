@@ -1,6 +1,6 @@
 # Glitch Grow Ads Agent
 
-> **AI-powered ad operations agent for Shopify stores** — cross-store revenue insights, Shopify ↔ Meta tracking reconciliation, and human-in-the-loop ad management via Telegram.
+> **An autonomous AI ads-ops agent that plans, analyzes, executes, and delivers ROAS end-to-end** — across Shopify, Meta, and Amazon, from a single Telegram surface.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![LangGraph](https://img.shields.io/badge/orchestrator-LangGraph-orange)](https://github.com/langchain-ai/langgraph)
@@ -11,14 +11,37 @@
 
 ## What this is
 
-A **systematic AI agent** that connects your Shopify stores to your Meta Ads accounts, finds where revenue is leaking, and lets you act on it — all from Telegram.
+An **autonomous AI agent** that runs paid-media ops for a portfolio of e-commerce brands. The agent closes the full loop — it plans what to do, measures what happened, executes the next action, and learns from the outcome — with the operator supervising from Telegram rather than driving every click.
 
-Built for e-commerce brands running multiple Shopify storefronts and Meta Ads campaigns who need a single surface that answers:
+```
+            ┌─────────────────────────────────────────────────┐
+            │                                                 │
+            │    PLAN         ANALYZE        EXECUTE          │
+            │   (what to     (did it         (pause / scale   │
+            │    test next)   work?)          budgets /       │
+            │                                  swap creative)  │
+            │       ▲                               │         │
+            │       │                               ▼         │
+            │     LEARN ◄────────────── MEASURE (ROAS) ────────┘
+            │  (agent memory: lessons, prior decisions,
+            │   per-brand behavior rules)
+            └─────────────────────────────────────────────────┘
+```
 
-- *"What was our true ROAS on Ayurpet India vs. Global last week?"*
-- *"Are our Shopify orders actually reaching Meta's Conversions API?"*
-- *"Which campaigns have a pixel gap vs. CAPI?"*
-- *"Pause the underperforming ad set — but make me confirm first."*
+The human is the **supervisor**: sets constraints (budget caps, brand tone, approval thresholds), reviews the agent's proposed actions when they cross HITL gates, and gets delivered outcomes — not dashboards.
+
+Every decision the agent makes is grounded in real revenue math across three surfaces it ties together natively:
+
+- **Shopify** — per-store GMV, AOV, repeat-buyer cohorts, UTM coverage
+- **Meta Ads** — campaign/ad-set/ad-level spend + creative + destination URLs
+- **Amazon** — Seller Central orders, SP Ads performance, per-ASIN P&L, and Meta → Amazon cross-channel attribution (subtraction model where Amazon Attribution API is unavailable)
+
+It answers the questions an ad ops manager would otherwise pay ₹50K-2L/month to a human for:
+
+- *"What's our true blended ROAS across Meta-to-Shopify and Meta-to-Amazon for this brand?"*
+- *"Which ASIN is getting disproportionate Meta clicks but no Amazon conversions — pause or iterate?"*
+- *"Shopify pixel says 8× ROAS, PostHog ground truth says 0.9× — reconcile and propose the fix."*
+- *"Scale Hip-O-Joint by ₹10K — but flag me first if CPC jumps > 30%."*
 
 ---
 
