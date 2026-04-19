@@ -13,7 +13,13 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-19
 
-- **02:30 UTC** — auto-sync: 2026-04-19 02:30 UTC (`acbe438`) — 4 files
+- **03:45 UTC** — auto-sync: 2026-04-19 03:45 UTC (`9dc2d82`) — 5 files
+        A	ops/scripts/migrate_amazon_attribution_view.sql
+        M	src/ads_agent/agent/graph.py
+        A	src/ads_agent/agent/nodes/attribution.py
+        M	src/ads_agent/telegram/bot.py
+        M	src/ads_agent/telegram/handlers.py
+- **02:30 UTC** — auto-sync: 2026-04-19 02:30 UTC (`5d57824`) — 5 files
         A	ops/scripts/migrate_meta_ads_daily.sql
         A	ops/scripts/sync_meta_ads.py
         A	ops/systemd/glitch-meta-ads-sync.service

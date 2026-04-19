@@ -18,6 +18,7 @@ from ads_agent.telegram.handlers import (
     cmd_ads,
     cmd_alerts,
     cmd_amazon,
+    cmd_attribution,
     cmd_creative,
     cmd_help,
     cmd_ideas,
@@ -52,6 +53,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("ideas", cmd_ideas))
     app.add_handler(CommandHandler("alerts", cmd_alerts))
     app.add_handler(CommandHandler("amazon", cmd_amazon))
+    app.add_handler(CommandHandler("attribution", cmd_attribution))
     return app
 
 

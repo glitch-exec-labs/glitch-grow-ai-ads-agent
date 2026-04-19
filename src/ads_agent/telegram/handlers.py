@@ -34,6 +34,7 @@ async def cmd_help(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "`/ideas <store> [days]` — 5 numbered creative briefs based on winning patterns\n"
         "`/alerts <store>` — CPC drift, spend anomalies, tracking gaps, premature-kill reminders\n"
         "`/amazon <store> [days]` — Amazon Seller + Amazon Ads rollup via Supermetrics (Ayurpet only for now)\n"
+        "`/attribution <store> [days]` — Meta → Amazon attribution (subtraction model, Ayurpet)\n"
         "`/stores` — list configured stores\n"
         "`/help` — this message"
     )
@@ -125,6 +126,12 @@ async def cmd_amazon(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update):
         return
     await _run_and_reply(update, "amazon", 30, ctx.args or [])
+
+
+async def cmd_attribution(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_admin(update):
+        return
+    await _run_and_reply(update, "attribution", 30, ctx.args or [])
 
 
 async def cmd_creative(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
