@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily Meta ads snapshot — fires at 02:45 UTC (between Amazon Ads 04:00 and Seller 02:00)
+Requires=glitch-meta-ads-sync.service
+
+[Timer]
+OnCalendar=*-*-* 02:45:00 UTC
+Persistent=true
+# Jitter so concurrent boxes don't hammer Meta Graph API simultaneously
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

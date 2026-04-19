@@ -1,0 +1,17 @@
+[Unit]
+Description=Glitch Grow Ads Agent — Meta ads daily snapshot (destination URLs for Meta→Amazon attribution)
+After=network.target
+
+[Service]
+Type=oneshot
+User=support
+Group=support
+WorkingDirectory=/home/support/glitch-grow-ads-agent
+EnvironmentFile=/home/support/glitch-grow-ads-agent/.env
+ExecStart=/home/support/glitch-grow-ads-agent/.venv/bin/python ops/scripts/sync_meta_ads.py --days 7
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=glitch-meta-ads-sync
+
+# 15 min timeout — even Ayurpet (780 rows × 30d) takes < 30s; cap is defensive
+TimeoutStartSec=900

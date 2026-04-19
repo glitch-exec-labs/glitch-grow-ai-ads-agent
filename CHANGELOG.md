@@ -13,7 +13,12 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-19
 
-- **02:00 UTC** — auto-sync: 2026-04-19 02:00 UTC (`78a14ed`) — 2 files
+- **02:30 UTC** — auto-sync: 2026-04-19 02:30 UTC (`acbe438`) — 4 files
+        A	ops/scripts/migrate_meta_ads_daily.sql
+        A	ops/scripts/sync_meta_ads.py
+        A	ops/systemd/glitch-meta-ads-sync.service
+        A	ops/systemd/glitch-meta-ads-sync.timer
+- **02:00 UTC** — auto-sync: 2026-04-19 02:00 UTC (`473d651`) — 3 files
         M	ops/scripts/migrate_airbyte_amazon_sku_view.sql
         M	src/ads_agent/agent/nodes/amazon_insights.py
 - **01:45 UTC** — auto-sync: 2026-04-19 01:45 UTC (`9e10147`) — 5 files
