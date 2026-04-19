@@ -47,38 +47,34 @@ It answers the questions an ad ops manager would otherwise pay ₹50K-2L/month t
 
 ## Features
 
-### Shopify Insights
-- Pull **orders, revenue, AOV, and top SKUs** per store via Shopify Admin GraphQL
-- Multi-store support — one command covers all connected storefronts
-- UTM attribution coverage analysis (how many orders have a known traffic source)
-- Repeat customer rate and cohort roll-up
+### Autonomous decision loop (v2, in progress)
+- Agent runs hourly evaluation cycles per brand — ingests fresh spend/revenue/session data, diagnoses drift vs. expectation, proposes the minimum-risk next action
+- Executes write-actions (pause, scale budget ±X%, swap primary creative) via platform APIs once a brand-specific **autonomy threshold** is cleared
+- Below-threshold actions are queued for Telegram HITL approval with a one-click accept
+- Every action writes a durable decision record in `ads_agent.agent_memory` with rationale, alternatives considered, and predicted outcome — feeds the learning loop
 
-### Meta Ads Integration
-- **True ROAS** calculation: Shopify revenue ÷ Meta spend (not Meta's own reported ROAS, which over-counts)
-- Campaign, ad set, and ad-level spend breakdown via [glitch-ads-mcp](https://github.com/glitch-exec-labs/glitch-ads-mcp) (our fork of meta-ads-mcp, port 3103)
-- Cross-account support — single agent, multiple Meta ad accounts
+### Measurement substrate (v1, shipped)
+- **True ROAS** per channel: Shopify revenue ÷ Meta spend via PostHog ground truth (not Meta's own over-reported number)
+- **Meta → Amazon attribution** via subtraction model (`total_amazon_orders − amazon_sp_ads_orders`) for brands without Amazon Attribution API access
+- **Per-SKU P&L** joining Amazon OrderItems × Listings × productads with currency-normalized ROAS across IN/AE/UK/EU marketplaces
+- **Tracking reconciliation**: Shopify orders joined to Meta conversion events by `order_id`; surfaces pixel-only vs CAPI-only events and generates specific remediation recipes
 
-### Amazon (via sibling MCP)
-- Amazon Seller Central + Amazon Ads data flows through [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) (port 3105)
-- Runs in **Supermetrics-fallback mode** until our native Amazon Ads LWA app is approved; switches to native SP-API without agent changes once approved
-- Agent reads from a nightly Postgres cache (`ads_agent.amazon_daily`) because live Amazon Reports API queries take 2–3 minutes — unfit for inline Telegram replies
+### Pluggable data-source architecture
+- Meta Ads via [glitch-ads-mcp](https://github.com/glitch-exec-labs/glitch-ads-mcp) (fork of pipeboard/meta-ads-mcp, port 3103)
+- Amazon Seller + Ads via Airbyte Cloud → Postgres (24 streams, dedup'd + typed views in `ads_agent.*`); sibling [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) kept for ad-hoc Claude Code exploration and for eventual Amazon Attribution API activation
+- Shopify via owned asyncpg reader against the auth-hub `Session` table + typed GraphQL client
+- Swapping a data source (e.g. Amazon Airbyte → native LWA once approved) is a server-side change with zero agent redeploy
 
-### Tracking Reconciliation & Audit
-- **Order match rate**: joins Shopify orders to Meta conversion events by `order_id`
-- Detects pixel-only vs. CAPI-only vs. fully-deduped events
-- Surfaces dark conversions (orders Shopify recorded but Meta never saw)
-- Generates remediation recipes — specific, actionable fixes (no vague advice)
+### Memory + learning
+- `ads_agent.agent_memory` with pgvector (HNSW cosine) and tsvector FTS — every agent turn indexed for hybrid recall
+- Every command injects `<prior_context>` from relevant past turns before prompting the LLM — agent starts each decision with "last time we faced X, we did Y, outcome was Z"
+- Nightly consolidation cron scores memories on relevance/frequency/diversity/recency/consolidation and promotes durable lessons to per-brand `MEMORY.md` files loaded as system prompt context
 
-### Telegram-First Operator Surface
-- Dedicated bot (separate from any trading or ops bots) — right audience, right commands
-- HITL (human-in-the-loop) approval gates: the agent proposes, you confirm before any write-action hits Meta
-- Daily digest at 07:00 IST: GMV, spend, ROAS delta, tracking health per store
-- Proactive alerts: match-rate drop >20% d/d, spend anomaly, top-SKU out-of-stock
-
-### Human-In-The-Loop Ad Management (v2)
-- `/ads <store> pause <campaign_id>` — agent drafts the action, Telegram button confirms it
-- Budget adjustments, creative swaps — all logged in the agent run history
-- Never touches Meta without an explicit human approval in the approval chain
+### Telegram-first operator interface
+- Dedicated bot per workspace. Admin-gated (`TELEGRAM_ADMIN_IDS`), rate-limited, webhook-mode
+- Diagnostic commands: `/insights`, `/roas`, `/tracking_audit`, `/ads`, `/creative`, `/ideas`, `/alerts`, `/amazon`, `/attribution`
+- Proactive alerts: CPC drift, match-rate drop > 20% d/d, ROAS drop > 30% w/w, zero-purchase burners, premature-kill bias warnings
+- Daily 07:00 IST digest per store (v2): GMV, spend, ROAS delta, tracking health, agent's queued actions
 
 ---
 
@@ -98,22 +94,32 @@ without redeploying the agent.
 ## Architecture
 
 ```
-                  Telegram (@YourAdsBot)
-                        │
-          /insights  /roas  /tracking_audit  /ads
-                        │
-              ┌─────────▼──────────┐
-              │  LangGraph Agent   │  ← Pydantic AI typed tools
-              │  (state + retries  │    LiteLLM model router
-              │   + HITL gates)    │    Claude Sonnet / Gemini Flash
-              └──────┬─────────────┘
+                     Telegram (operator)
+                           ▲
+                           │ commands + HITL approvals
+                           ▼
+              ┌────────────────────────────┐
+              │   LangGraph Agent Core     │   recall → route → execute
+              │   ─────────────────────    │   every turn injects <prior_context>
+              │   • planner / router       │   LiteLLM: Gemini Pro → Flash → GPT-4o-mini
+              │   • measurement nodes      │
+              │   • action nodes (v2)      │
+              │   • HITL gates             │
+              │   • memory (pgvector+FTS)  │
+              └──────┬─────────────────────┘
                      │
-       ┌─────────────┼─────────────────┐
-       ▼             ▼                 ▼
-  PostHog Cloud  meta-ads-mcp    Shopify Admin
-  (events,       (campaign        GraphQL client
-   identity,      read + CRUD,    (orders, refunds,
-   CAPI dedup)    spend data)     inventory)
+       ┌─────────────┼──────────────────┬────────────────┐
+       ▼             ▼                  ▼                ▼
+  PostHog Cloud  glitch-ads-mcp    Airbyte Cloud    Shopify Admin
+  (events,       (Meta Graph        → Postgres       GraphQL
+   CAPI dedup,   read + CRUD        (Amazon Seller   (orders,
+   identity)     via MCP :3103)     + Ads tables)    Session DB)
+                                           │
+                                           ▼
+                               ads_agent.*_daily_v
+                              (deduped, typed views;
+                               attribution math, SKU P&L,
+                               financials, traffic)
 ```
 
 **Deployment split:**
@@ -251,15 +257,28 @@ python ops/scripts/register_webhooks.py
 
 ## Telegram Commands
 
+Diagnostic / read (shipped):
+
 | Command | What it does |
 |---|---|
-| `/insights <store> [days]` | GMV, order count, AOV, top SKUs for the last N days |
-| `/roas <store> <days>` | True ROAS (Shopify revenue ÷ Meta spend) vs. Meta-reported ROAS |
-| `/tracking_audit <store>` | Order match rate, UTM coverage, pixel/CAPI gap, remediation recipes |
-| `/scopes_check` | Shows Shopify API scopes granted per store — flags missing read_orders etc. |
+| `/insights <store> [days]` | GMV, orders, AOV, UTM coverage, repeat rate via PostHog HogQL |
+| `/roas <store> [days]` | True ROAS (Shopify revenue ÷ Meta spend) vs. Meta-reported; summed across linked ad accounts |
+| `/tracking_audit <store> [days]` | LLM-picked remediation recipes for pixel/CAPI gaps and match-rate drift |
+| `/ads <store> [days]` | Top-10 ad leaderboard by spend with deep-link to `/creative <ad_id>` |
+| `/creative <ad_id> [store]` | Gemini vision critique of thumbnail + body + metrics — Hook/Body/Offer/Audience/Test-next |
+| `/ideas <store> [days]` | 5 numbered creative briefs based on winning patterns |
+| `/alerts <store>` | CPC drift vs family baseline, spend-up/rev-flat, zero-purchase burners, premature-kill reminders |
+| `/amazon <store> [days]` | Amazon Seller + Amazon Ads rollup per marketplace (direct Airbyte → Postgres, sub-second) |
+| `/attribution <store> [days]` | Meta → Amazon attribution (subtraction model, per-ASIN ROAS, Shopify vs Amazon channel split) |
 | `/stores` | List all configured storefronts |
-| `/daily_digest_toggle on\|off` | Subscribe/unsubscribe this chat from 07:00 IST digest |
-| `/ads <store> <action>` | *(v2)* Propose a Meta write-action; requires inline HITL approval |
+
+Autonomous action (v2, in progress):
+
+| Command | What it does |
+|---|---|
+| `/plan <store>` | Agent's current proposed actions with rationale; approve/reject inline |
+| `/execute <action_id>` | Dry-run a queued action (shows diff before commit) |
+| `/autonomy <store> <threshold>` | Set per-brand autonomy threshold (how much spend agent can move without HITL) |
 
 All commands require your Telegram user ID to be in `TELEGRAM_ADMIN_IDS`.
 
@@ -329,21 +348,28 @@ ops/
 
 ## Roadmap
 
-- [x] **v0** — Repo scaffold, store registry, LangGraph skeleton, `/insights` Telegram command, FastAPI `/healthz`
-- [ ] **v1** — Multi-store webhooks live, HMAC verification, Meta ROAS cross-ref, `/tracking_audit` with Gemini 2.5 Pro, HITL gate wired
-- [ ] **v2** — Cloud Scheduler daily digest + proactive alerts, HITL-gated Meta write-actions (`/ads pause|budget`), Next.js dashboard (ROAS roll-up, agent run log, HITL approval inbox)
+- [x] **v0** — Repo scaffold, store registry, LangGraph skeleton, Shopify webhook receivers, FastAPI `/healthz`
+- [x] **v1** — All 9 diagnostic commands live: `/insights`, `/roas`, `/tracking_audit`, `/ads`, `/creative`, `/ideas`, `/alerts`, `/amazon`, `/attribution`. Amazon Seller + Ads + cross-channel (Meta → Amazon) attribution wired via Airbyte direct. pgvector memory substrate with hybrid recall. Daily cron for Meta ads destination-URL snapshot.
+- [ ] **v2 (in progress)** — Autonomous action layer: per-brand autonomy thresholds, agent-proposed write-actions (pause / scale budget / swap creative), HITL approval inbox in Telegram, structured decision log in `agent_memory.kind='action_*'`. Weekly alert rules, Amazon session-refined attribution once `GET_SALES_AND_TRAFFIC_REPORT` lands.
+- [ ] **v3** — Creative generation loop: agent writes + renders new Meta ad creatives (Gemini + Imagen/Flux) based on observed winning patterns, ships them for HITL review, tracks lift. Cross-channel brand ROAS dashboard (Shopify + Amazon combined sales vs Meta + Amazon Ads combined spend).
 
 ---
 
 ## Why LangGraph over CrewAI / AutoGen?
 
-Ad operations is a **state machine**, not a conversation:
+Autonomous ad ops is a **state machine**, not a conversation:
 
 ```
-pull_insights → reconcile → diagnose → propose_action → [HITL gate] → ads_write
+recall → measure → diagnose → plan_action → [HITL gate if > threshold] → execute → observe → memorize
 ```
 
-LangGraph gives you durable checkpoints (surviving restarts between HITL steps), per-node model selection, and retries with exponential backoff — exactly what you want before the agent touches a live Meta campaign. CrewAI's role-framing and AutoGen's conversation model are the wrong abstraction here.
+LangGraph gives:
+- **Durable checkpoints** — state survives restarts between HITL approvals (critical when an action sits in the approval queue for hours)
+- **Per-node model selection** — route reasoning nodes to Gemini 2.5 Pro, bulk-summary nodes to Flash, parse-only nodes to GPT-4o-mini; cost scales with cognitive demand
+- **Deterministic retries with exponential backoff** — non-negotiable before the agent touches a live Meta budget
+- **Conditional entry points** — one graph serves 12+ command types without rebuilding
+
+CrewAI's role-framing pattern and AutoGen's conversation model are the wrong abstractions for a system that must make the same call reproducibly and audit-ably whether a human or a scheduler triggered it.
 
 ---
 
