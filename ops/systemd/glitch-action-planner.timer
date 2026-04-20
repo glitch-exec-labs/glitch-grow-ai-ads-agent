@@ -1,0 +1,11 @@
+[Unit]
+Description=Glitch Grow planner — fires every 4 hours starting 04:15 UTC
+Requires=glitch-action-planner.service
+
+[Timer]
+OnCalendar=*-*-* 04,08,12,16,20,00:15:00 UTC
+Persistent=true
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target

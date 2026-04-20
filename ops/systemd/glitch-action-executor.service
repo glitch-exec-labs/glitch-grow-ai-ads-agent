@@ -1,0 +1,16 @@
+[Unit]
+Description=Glitch Grow Ads Agent — action executor (runs approved Meta actions)
+After=network.target glitch-ads-bot.service
+Wants=glitch-ads-bot.service
+
+[Service]
+Type=oneshot
+User=support
+Group=support
+WorkingDirectory=/home/support/glitch-grow-ads-agent
+EnvironmentFile=/home/support/glitch-grow-ads-agent/.env
+ExecStart=/home/support/glitch-grow-ads-agent/.venv/bin/python ops/scripts/run_action_executor.py
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=glitch-action-executor
+TimeoutStartSec=300
