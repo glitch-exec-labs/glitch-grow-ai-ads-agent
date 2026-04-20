@@ -39,12 +39,38 @@ def _inline_keyboard(action_id: int) -> dict:
     }
 
 
+class TelegramNotifyError(RuntimeError):
+    """Raised when an action row was inserted but Telegram delivery failed.
+
+    The row is marked `notify_failed` so the planner's dedup window does
+    not suppress future reproposals for the same target (issue #6).
+    """
+
+
 async def post_proposal(
     pool: asyncpg.Pool,
     prop: ActionProposal,
     chat_id: int,
 ) -> int:
-    """Insert action row, post to Telegram, return action_id."""
+    """Insert action row, post to Telegram, return action_id.
+
+    Issue #6: if the Telegram send fails for any reason (transient 5xx,
+    network error, bot kicked from chat, rate limit, malformed markdown,
+    etc.), we MUST NOT leave a pending_approval row sitting in the DB with
+    no `telegram_message_id`. The planner's 72h dedup window would then
+    suppress re-proposals for the same target while no human ever sees it.
+
+    Flow:
+      1. Insert row (status='pending_approval', telegram_message_id=NULL).
+      2. Attempt Telegram sendMessage.
+      3a. On success: UPDATE telegram_message_id=<msg_id>. Row is live.
+      3b. On failure: UPDATE status='notify_failed' and raise
+          TelegramNotifyError. The planner's dedup query filters out
+          `notify_failed` rows so the next planner tick will repropose.
+
+    We still keep the failed row in the table for audit / debugging rather
+    than deleting it.
+    """
     # 1) Insert (status defaults to pending_approval)
     async with pool.acquire() as conn:
         action_id = await conn.fetchval(
@@ -70,21 +96,44 @@ async def post_proposal(
         evidence=prop.evidence,
         expected_impact=prop.expected_impact,
     )
-    async with httpx.AsyncClient(timeout=15.0) as c:
-        resp = await c.post(
-            f"{TELEGRAM_API}/bot{_bot_token()}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": "Markdown",
-                "disable_web_page_preview": True,
-                "reply_markup": _inline_keyboard(action_id),
-            },
-        )
-    body = resp.json()
+
+    body: dict = {}
+    send_error: str = ""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as c:
+            resp = await c.post(
+                f"{TELEGRAM_API}/bot{_bot_token()}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": text,
+                    "parse_mode": "Markdown",
+                    "disable_web_page_preview": True,
+                    "reply_markup": _inline_keyboard(action_id),
+                },
+            )
+        body = resp.json()
+    except Exception as e:  # httpx transport / JSON decode failure
+        send_error = f"transport: {e!r}"
+        body = {"ok": False}
+
     if not body.get("ok"):
-        log.error("Telegram post failed for action %s: %s", action_id, body)
-        return action_id
+        reason = body.get("description") or send_error or "unknown Telegram error"
+        log.error(
+            "Telegram post failed for action %s: %s — marking notify_failed",
+            action_id, reason,
+        )
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE ads_agent.agent_actions
+                   SET status='notify_failed',
+                       result=$1::jsonb
+                   WHERE id=$2 AND status='pending_approval'""",
+                json.dumps({"notify_error": str(reason)[:500]}),
+                action_id,
+            )
+        raise TelegramNotifyError(
+            f"Telegram send failed for action {action_id}: {reason}"
+        )
 
     msg_id = body["result"]["message_id"]
     async with pool.acquire() as conn:

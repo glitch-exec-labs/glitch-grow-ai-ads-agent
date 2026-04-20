@@ -47,7 +47,22 @@ def _extract_order(payload: dict) -> dict:
     money = payload.get("current_total_price") or payload.get("total_price") or "0"
     currency = payload.get("currency", "")
     customer = payload.get("customer") or {}
-    customer_id = str(customer.get("id", "")) or payload.get("email", "anonymous")
+
+    # Guest-order fallback (issue #5):
+    # `customer` may be present but `customer.id` can be literally None on
+    # guest checkouts. The old `str(customer.get("id", ""))` turned None into
+    # the string "None", which (a) is truthy so the `or payload.get("email")`
+    # fallback never fired and (b) collapsed every guest order into one
+    # PostHog person with distinct_id="None". Explicitly treat null/empty ids
+    # as missing and prefer email → order_id → "anonymous".
+    raw_cid = customer.get("id")
+    customer_id_str = str(raw_cid) if raw_cid not in (None, "", 0) else ""
+    customer_id = (
+        customer_id_str
+        or (customer.get("email") or payload.get("email") or "").strip()
+        or str(payload.get("id") or "")
+        or "anonymous"
+    )
 
     # UTM params live in landing_site (URL string) or customer_journey_summary
     landing = payload.get("landing_site") or ""

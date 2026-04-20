@@ -49,7 +49,20 @@ def capture_order_event(
       - utm_source/medium/campaign/content             (for attribution)
       - line_items JSON, tags, source_name             (for product analysis)
     """
-    distinct_id = order.get("customer_id") or order.get("order_id") or "unknown"
+    # Defense-in-depth for issue #5: even if an upstream caller passes
+    # customer_id=None or the literal string "None" (common trap from
+    # `str(None)`), fall through to order_id / email rather than collapse
+    # all guest orders into one PostHog person.
+    def _clean(v: object) -> str:
+        s = str(v).strip() if v is not None else ""
+        return "" if s.lower() in ("", "none", "null") else s
+
+    distinct_id = (
+        _clean(order.get("customer_id"))
+        or _clean(order.get("email"))
+        or _clean(order.get("order_id"))
+        or "unknown"
+    )
     props: dict = {
         "shop": shop_domain,
         "store_slug": store_slug,

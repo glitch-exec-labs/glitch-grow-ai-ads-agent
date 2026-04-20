@@ -180,13 +180,16 @@ Key variables in `.env`:
 
 | Variable | What it is |
 |---|---|
-| `POSTGRES_INSIGHTS_RO_URL` | Read-only Postgres role on the Shopify session DB |
+| `POSTGRES_INSIGHTS_RO_URL` | **Read-only** Postgres role on the Shopify auth-hub DB — used ONLY to read the `Session` table |
+| `POSTGRES_RW_URL` | **Writable** Postgres role that owns `ads_agent.*` (agent_memory, agent_actions). All agent writes go here. In dev you may leave this blank and both roles collapse to `POSTGRES_INSIGHTS_RO_URL`, but in prod the two MUST be separate |
 | `SHOPIFY_WEBHOOK_SECRETS` | JSON map `{app_slug: webhook_secret}` per Custom App |
 | `META_ADS_MCP_URL` | URL of your running `meta-ads-mcp` instance |
 | `META_ACCESS_TOKEN` | Meta Marketing API token for CAPI sends |
 | `POSTHOG_API_KEY` | PostHog Cloud project key |
 | `TELEGRAM_BOT_TOKEN_ADS` | Token from BotFather for your ads bot |
-| `TELEGRAM_ADMIN_IDS` | Comma-separated Telegram user IDs who can issue commands |
+| `TELEGRAM_ADMIN_IDS` | Comma-separated Telegram user IDs who can issue commands **and approve/reject action proposals** |
+| `TELEGRAM_WEBHOOK_SECRET` | Random string you pass to Telegram's `setWebhook?secret_token=...`. The server rejects any webhook update without this header — without it anyone can forge Telegram updates |
+| `AGENT_RUN_TOKEN` | Bearer token required to call `POST /agent/run`. If unset the endpoint is disabled. In Cloud Run, also gate with IAM — never deploy `/agent/run` as `--allow-unauthenticated` |
 | `ANTHROPIC_API_KEY` | For Claude Sonnet (reasoning nodes) |
 | `GOOGLE_API_KEY` | For Gemini Flash/Pro (bulk + audit nodes) |
 
@@ -208,9 +211,11 @@ STORES = (
 )
 ```
 
-### Set up the read-only Postgres role
+### Set up the two Postgres roles
 
-The agent reads Shopify session tokens from the auth-hub database without being able to modify them:
+The agent needs **two** database roles with distinct privileges. Do not merge them.
+
+**1. `insights_ro` — read-only on the Shopify auth-hub DB.** Used only to read the `Session` table (Shopify access tokens per shop):
 
 ```sql
 CREATE USER insights_ro WITH PASSWORD 'choose_strong_password';
@@ -218,6 +223,22 @@ GRANT CONNECT ON DATABASE your_shopify_db TO insights_ro;
 GRANT USAGE ON SCHEMA public TO insights_ro;
 GRANT SELECT ON "Session" TO insights_ro;
 ```
+
+Point `POSTGRES_INSIGHTS_RO_URL` at this role.
+
+**2. `ads_agent_rw` — writable on `ads_agent.*`.** Used for agent memory, action proposals, approval state transitions, and executor result writes. This can live in the same Postgres instance or a separate one:
+
+```sql
+CREATE USER ads_agent_rw WITH PASSWORD 'choose_strong_password';
+GRANT CONNECT ON DATABASE your_db TO ads_agent_rw;
+GRANT USAGE, CREATE ON SCHEMA ads_agent TO ads_agent_rw;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA ads_agent TO ads_agent_rw;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ads_agent TO ads_agent_rw;
+ALTER DEFAULT PRIVILEGES IN SCHEMA ads_agent
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ads_agent_rw;
+```
+
+Point `POSTGRES_RW_URL` at this role. If you leave `POSTGRES_RW_URL` blank the agent falls back to `POSTGRES_INSIGHTS_RO_URL` for writes — this is intentional so local dev works with a single superuser DSN, but against a correctly-locked `insights_ro` role every write path will fail.
 
 ### Run locally
 
@@ -242,9 +263,28 @@ docker push gcr.io/YOUR_PROJECT/glitch-grow-ads-agent
 gcloud run deploy glitch-grow-ads-agent \
   --image gcr.io/YOUR_PROJECT/glitch-grow-ads-agent \
   --region us-central1 \
-  --allow-unauthenticated \
-  --set-secrets="ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,..."
+  --no-allow-unauthenticated \
+  --set-secrets="ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,TELEGRAM_WEBHOOK_SECRET=TELEGRAM_WEBHOOK_SECRET:latest,AGENT_RUN_TOKEN=AGENT_RUN_TOKEN:latest,..."
 ```
+
+**Do not use `--allow-unauthenticated`.** The service exposes:
+
+- `POST /telegram/webhook` — must be reachable by Telegram. Protect it by configuring Telegram with `setWebhook?secret_token=<TELEGRAM_WEBHOOK_SECRET>`; the server rejects updates without that header.
+- `POST /shopify/webhook/{shop}` — must be reachable by Shopify. Protected by per-app HMAC via `SHOPIFY_WEBHOOK_SECRETS`.
+- `POST /agent/run` — internal only. Requires `Authorization: Bearer <AGENT_RUN_TOKEN>`. Prefer Cloud Run IAM + a signed internal gateway as a second layer.
+- `GET  /healthz` — safe to expose.
+
+If you need Telegram/Shopify to reach the webhook endpoints on an IAM-gated service, put Cloud Run behind an HTTPS load balancer with per-path policies, or terminate webhooks on a VM and keep the LangGraph service fully IAM-private.
+
+### Register the Telegram webhook with a secret token
+
+```bash
+curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN_ADS}/setWebhook" \
+  -d "url=${PUBLIC_BASE_URL}/telegram/webhook" \
+  -d "secret_token=${TELEGRAM_WEBHOOK_SECRET}"
+```
+
+Telegram will now include `X-Telegram-Bot-Api-Secret-Token: ${TELEGRAM_WEBHOOK_SECRET}` on every delivery. The server rejects any update that lacks it.
 
 ### Set up Shopify webhooks
 
