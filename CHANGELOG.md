@@ -11,9 +11,26 @@ Body text (if present) shown as indented sub-bullets.
 
 ---
 
+## 2026-04-20
+
+- **01:30 UTC** — auto-sync: 2026-04-20 01:30 UTC (`2315bb9`) — 2 files
+        A	ops/scripts/migrate_airbyte_amazon_traffic_view.sql
+        M	src/ads_agent/agent/nodes/attribution.py
+
 ## 2026-04-19
 
-- **04:45 UTC** — auto-sync: 2026-04-19 04:45 UTC (`9454635`) — 1 file
+- **04:46 UTC** — docs: reframe README around autonomous ads agent vision (`824d00f`) — 1 file
+    Positioning was insights-dashboard-with-HITL-bolt-on; actual product is a
+    closed-loop agent that plans, analyzes, executes, and delivers ROAS end-to-end
+    across Shopify + Meta + Amazon. Human is supervisor, not the driver.
+    Changes:
+    - Tagline + What-this-is: lead with autonomous loop, not read-only insights
+    - Features: split into v2 autonomous action layer (roadmap) and v1
+      measurement substrate (shipped); call out pluggable data sources,
+      pgvector memory + hybrid recall, learning-loop architecture
+    - Architecture diagram: include agent core (planner / measurement / action /
+      HITL / memory), add Airbyte → Postgres path for Amazon
+- **04:45 UTC** — auto-sync: 2026-04-19 04:45 UTC (`a918e6b`) — 2 files
         M	README.md
 - **03:45 UTC** — auto-sync: 2026-04-19 03:45 UTC (`b7895b7`) — 6 files
         A	ops/scripts/migrate_amazon_attribution_view.sql

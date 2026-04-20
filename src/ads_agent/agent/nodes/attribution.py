@@ -1,27 +1,104 @@
-"""attribution: Meta → Amazon attribution report.
+"""attribution: Meta → Amazon attribution report — dual-method.
 
-Reads ads_agent.amazon_attribution_daily_v, which uses the subtraction model:
-  meta_attributed = amazon_total − amazon_sp_ads
-Assumes organic Amazon traffic ≈ 0 (valid while Ayurpet < ~20 orders/day).
+Two ROAS numbers are computed side-by-side:
 
-Output is a structured Telegram block:
-  - Store header (brand + currency)
-  - Meta spend / clicks bucketed to Amazon vs Shopify
-  - Amazon attribution table (orders, gross, ROAS)
-  - Top-5 ASINs by Meta-to-Amazon spend
-  - Caveats block
+1. Subtraction-model ROAS (ads_agent.amazon_attribution_daily_v):
+     meta_attributed_orders = total_amz_orders − amz_sp_orders (per advertised ASIN)
+     meta_attributed_roas   = attributed_gross / meta_spend
+   Upper bound — credits organic baseline to Meta.
 
-Model caveats in every reply — Ayurpet must understand the assumptions.
+2. Sessions-delta ROAS (ads_agent.amazon_traffic_daily_v):
+     baseline_per_day = median(orders, gross) on zero-Meta-spend days in window
+     incremental_orders = sum(orders on spend-days) − count(spend-days) × baseline
+     true_roas = incremental_gross / total_meta_spend
+   Incremental truth — uses Amazon's own Business Reports sessions data as a
+   natural-experiment signal.
+
+When the two methods diverge > 2×, the node flags which to trust:
+  - For small / thin-baseline stores (< 3 zero-spend days), subtraction is the
+    only usable number.
+  - For stores with > 3 zero-spend days and > 3 spend-days in the window, the
+    sessions-delta is the ground-truth call.
+
+Both numbers printed with methodology block so the recipient understands.
 """
 from __future__ import annotations
 
 import logging
+import statistics
 
 import asyncpg
 
 from ads_agent.config import get_store, settings
 
 log = logging.getLogger(__name__)
+
+# Currency normalization — same rate used in amazon_attribution_daily_v.
+AED_TO_INR = 22.7
+
+
+def _sessions_delta_roas(rows: list[dict]) -> dict:
+    """Compute incremental ROAS via zero-spend-baseline subtraction.
+
+    Input: list of daily rows with fields
+        date, meta_spend_inr, meta_clicks, sessions, units, gross_inr
+    Output: dict with incremental metrics + flags.
+
+    Uses median (not mean) for baseline to be robust against one-off spike days.
+    """
+    zero_days = [r for r in rows if float(r.get("meta_spend_inr") or 0) == 0]
+    spend_days = [r for r in rows if float(r.get("meta_spend_inr") or 0) > 0]
+
+    if len(zero_days) < 3 or len(spend_days) < 3:
+        return {
+            "usable": False,
+            "reason": (
+                f"need ≥3 zero-spend and ≥3 spend days; got "
+                f"{len(zero_days)}z / {len(spend_days)}s"
+            ),
+        }
+
+    baseline_orders_per_day = statistics.median(r["units"] or 0 for r in zero_days)
+    baseline_gross_per_day  = statistics.median(r["gross_inr"] or 0 for r in zero_days)
+    baseline_sessions_per_day = statistics.median(r["sessions"] or 0 for r in zero_days)
+
+    n_spend = len(spend_days)
+    total_spend       = sum(float(r["meta_spend_inr"] or 0) for r in spend_days)
+    total_clicks      = sum(int(r["meta_clicks"]      or 0) for r in spend_days)
+    total_sessions    = sum(int(r["sessions"]         or 0) for r in spend_days)
+    total_units       = sum(int(r["units"]            or 0) for r in spend_days)
+    total_gross       = sum(float(r["gross_inr"]      or 0) for r in spend_days)
+
+    expected_baseline_orders = n_spend * baseline_orders_per_day
+    expected_baseline_gross  = n_spend * baseline_gross_per_day
+    expected_baseline_sessions = n_spend * baseline_sessions_per_day
+
+    incremental_orders   = max(0, total_units    - expected_baseline_orders)
+    incremental_gross    = max(0, total_gross    - expected_baseline_gross)
+    incremental_sessions = max(0, total_sessions - expected_baseline_sessions)
+
+    roas = (incremental_gross / total_spend) if total_spend > 0 else 0
+    cpo = (total_spend / incremental_orders) if incremental_orders > 0 else None
+
+    return {
+        "usable": True,
+        "baseline_orders_per_day": baseline_orders_per_day,
+        "baseline_gross_per_day":  baseline_gross_per_day,
+        "baseline_sessions_per_day": baseline_sessions_per_day,
+        "n_zero_days":  len(zero_days),
+        "n_spend_days": n_spend,
+        "spend_days_total_spend":    total_spend,
+        "spend_days_total_clicks":   total_clicks,
+        "spend_days_total_sessions": total_sessions,
+        "spend_days_total_units":    total_units,
+        "spend_days_total_gross":    total_gross,
+        "incremental_orders":   incremental_orders,
+        "incremental_gross":    incremental_gross,
+        "incremental_sessions": incremental_sessions,
+        "roas": roas,
+        "cpo":  cpo,
+        "click_to_session_ratio": (total_clicks / total_sessions) if total_sessions > 0 else None,
+    }
 
 
 async def attribution_node(state: dict) -> dict:
@@ -95,6 +172,39 @@ async def attribution_node(state: dict) -> dict:
                LIMIT 5""",
             slug, days,
         )
+
+        # Daily time series joining Amazon traffic (sessions, units, gross) with
+        # Meta-to-Amazon spend per day. Drives the sessions-delta computation.
+        amz_host = 'amazon.in' if slug == 'ayurpet-ind' else 'amazon.ae'
+        fx = 1.0 if slug == 'ayurpet-ind' else AED_TO_INR
+        daily_series = await conn.fetch(
+            """WITH amz AS (
+                   SELECT date, sessions, units_ordered, gross
+                   FROM ads_agent.amazon_traffic_daily_v
+                   WHERE store_slug = $1
+                     AND date > (CURRENT_DATE - ($2::int * INTERVAL '1 day'))
+               ),
+               meta AS (
+                   SELECT date,
+                          COALESCE(SUM(spend), 0)  AS spend,
+                          COALESCE(SUM(clicks), 0) AS clicks
+                   FROM ads_agent.meta_ads_daily
+                   WHERE date > (CURRENT_DATE - ($2::int * INTERVAL '1 day'))
+                     AND destination_url ~* $3
+                   GROUP BY 1
+               )
+               SELECT
+                   a.date,
+                   a.sessions                               AS sessions,
+                   a.units_ordered                          AS units,
+                   (a.gross * $4::numeric)                  AS gross_inr,
+                   COALESCE(m.spend, 0)                     AS meta_spend_inr,
+                   COALESCE(m.clicks, 0)                    AS meta_clicks
+               FROM amz a
+               LEFT JOIN meta m USING (date)
+               ORDER BY a.date""",
+            slug, days, amz_host, fx,
+        )
     except asyncpg.UndefinedTableError:
         return {**state, "reply_text": (
             f"*{store.brand}* · attribution\n\n"
@@ -134,12 +244,70 @@ async def attribution_node(state: dict) -> dict:
     lines.append(f"  SP Ads: {int(agg['sp_orders'])} orders · {sp_sales:,.0f} {ccy} sales · {sp_cost:,.0f} {ccy} spend")
     lines.append("")
 
-    lines.append("*Meta → Amazon (subtraction model)*")
+    # ── Method 1: subtraction model (upper bound) ───────────────────────────
+    lines.append("*Meta → Amazon — Method 1: Subtraction model (upper bound)*")
     lines.append(f"  spend: ₹{meta_spend:,.0f} · clicks: {meta_clicks:,}")
     lines.append(f"  attributed orders: {meta_orders} · gross: {meta_gross_native:,.0f} {ccy}"
                  + (f" (~₹{meta_gross_inr:,.0f})" if ccy != "INR" else ""))
-    lines.append(f"  *ROAS: {roas_inr:.2f}× · CPO: ₹{cpo_inr:,.0f}*")
+    lines.append(f"  ROAS: {roas_inr:.2f}× · CPO: ₹{cpo_inr:,.0f}")
     lines.append("")
+
+    # ── Method 2: sessions-delta (incremental truth) ────────────────────────
+    daily_rows = [dict(r) for r in daily_series]
+    sd = _sessions_delta_roas(daily_rows)
+    lines.append("*Meta → Amazon — Method 2: Sessions-delta (incremental truth)*")
+    if not sd.get("usable"):
+        lines.append(f"  _insufficient data_: {sd['reason']}")
+        lines.append("  falling back to Method 1 above.")
+        roas_sd = None
+    else:
+        roas_sd = sd["roas"]
+        lines.append(
+            f"  baseline (zero-Meta, n={sd['n_zero_days']}d): "
+            f"{sd['baseline_orders_per_day']:.1f} orders/d · "
+            f"₹{sd['baseline_gross_per_day']:,.0f}/d · "
+            f"{sd['baseline_sessions_per_day']:.0f} sessions/d"
+        )
+        lines.append(
+            f"  spend-window (n={sd['n_spend_days']}d): "
+            f"₹{sd['spend_days_total_spend']:,.0f} spend · "
+            f"{sd['spend_days_total_clicks']:,} clicks · "
+            f"{sd['spend_days_total_sessions']:,} Amz sessions"
+        )
+        if sd.get("click_to_session_ratio"):
+            lines.append(
+                f"  Meta click → Amz session ratio: "
+                f"{sd['click_to_session_ratio']:.1f}× "
+                f"(ideal ~1.0; high = click loss / bot)"
+            )
+        lines.append(
+            f"  incremental orders: {sd['incremental_orders']:.1f} · "
+            f"gross: ₹{sd['incremental_gross']:,.0f}"
+        )
+        cpo_str = f"₹{sd['cpo']:,.0f}" if sd.get("cpo") else "n/a"
+        lines.append(f"  *ROAS: {sd['roas']:.2f}× · CPO: {cpo_str}*")
+    lines.append("")
+
+    # ── Divergence flag ─────────────────────────────────────────────────────
+    if roas_sd is not None and roas_inr > 0:
+        ratio = roas_inr / max(roas_sd, 0.01)
+        if ratio > 2.0:
+            lines.append(
+                f"⚠ *Subtraction is {ratio:.1f}× higher than sessions-delta.* "
+                f"Trust Method 2 — organic baseline is being mis-credited to Meta."
+            )
+            lines.append("")
+        elif ratio < 0.5:
+            lines.append(
+                f"⚠ *Sessions-delta is {1/ratio:.1f}× higher than subtraction.* "
+                f"Meta may be driving halo orders on non-advertised ASINs — investigate."
+            )
+            lines.append("")
+        else:
+            lines.append(
+                f"_Methods agree within 2× (ratio {ratio:.2f}) — confident in ~{roas_sd:.1f}× true ROAS._"
+            )
+            lines.append("")
 
     # ── Shopify side (Meta-reported; not attribution-model) ─────────────────
     if shopify_row and shopify_row["meta_spend"] and float(shopify_row["meta_spend"]) > 0:
