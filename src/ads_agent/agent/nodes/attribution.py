@@ -58,16 +58,18 @@ def _sessions_delta_roas(rows: list[dict]) -> dict:
             ),
         }
 
-    baseline_orders_per_day = statistics.median(r["units"] or 0 for r in zero_days)
-    baseline_gross_per_day  = statistics.median(r["gross_inr"] or 0 for r in zero_days)
-    baseline_sessions_per_day = statistics.median(r["sessions"] or 0 for r in zero_days)
+    # Coerce all numerics to float up-front — asyncpg returns Decimal for NUMERIC
+    # columns, which mixes badly with float in arithmetic downstream.
+    baseline_orders_per_day   = float(statistics.median(float(r["units"]    or 0) for r in zero_days))
+    baseline_gross_per_day    = float(statistics.median(float(r["gross_inr"] or 0) for r in zero_days))
+    baseline_sessions_per_day = float(statistics.median(float(r["sessions"] or 0) for r in zero_days))
 
     n_spend = len(spend_days)
-    total_spend       = sum(float(r["meta_spend_inr"] or 0) for r in spend_days)
-    total_clicks      = sum(int(r["meta_clicks"]      or 0) for r in spend_days)
-    total_sessions    = sum(int(r["sessions"]         or 0) for r in spend_days)
-    total_units       = sum(int(r["units"]            or 0) for r in spend_days)
-    total_gross       = sum(float(r["gross_inr"]      or 0) for r in spend_days)
+    total_spend    = sum(float(r["meta_spend_inr"] or 0) for r in spend_days)
+    total_clicks   = sum(int(r["meta_clicks"]      or 0) for r in spend_days)
+    total_sessions = sum(int(r["sessions"]         or 0) for r in spend_days)
+    total_units    = sum(int(r["units"]            or 0) for r in spend_days)
+    total_gross    = sum(float(r["gross_inr"]      or 0) for r in spend_days)
 
     expected_baseline_orders = n_spend * baseline_orders_per_day
     expected_baseline_gross  = n_spend * baseline_gross_per_day
@@ -349,9 +351,12 @@ async def attribution_node(state: dict) -> dict:
         lines.append("")
 
     # ── Caveats (always printed; methodology transparency) ──────────────────
-    lines.append("_Method: Meta credited only for orders on ASINs it advertised "
-                 f"(non-advertised ASIN orders classed as organic/halo). ROAS is INR/INR "
-                 f"(AED→INR @ 22.7). **Upper bound** — repeat-buyer dedup blocked by "
-                 f"PII-off config. Sessions refinement pending Airbyte SALES_AND_TRAFFIC sync._")
+    lines.append(
+        "_Method 1 (subtraction): orders on Meta-advertised ASINs minus SP-Ads orders. "
+        "Upper-bound; credits organic baseline._\n"
+        "_Method 2 (sessions-delta): median-of-zero-spend-days baseline subtracted from "
+        "spend-day totals using Amazon's Business Reports. Incremental truth._\n"
+        "_ROAS normalized to INR (AED→INR @ 22.7). Repeat-buyer effect uncontrolled (PII off in Airbyte)._"
+    )
 
     return {**state, "reply_text": "\n".join(lines)}
