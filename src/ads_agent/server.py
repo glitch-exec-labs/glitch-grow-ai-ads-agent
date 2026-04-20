@@ -112,6 +112,88 @@ async def telegram_webhook(request: Request) -> dict:
     return {"ok": True}
 
 
+@app.get("/api/amazon/consent-url")
+async def api_amazon_consent_url(request: Request) -> dict:
+    """Generate an LWA consent URL for authorizing Amazon Ads API access.
+
+    Gated by the same AGENT_RUN_TOKEN bearer as /agent/run (admin-only).
+    Query params:
+      account_ref — logical key for which advertiser this consent is for
+                    (e.g. "ayurpet", "nuraveda-self"). Required.
+      notes       — optional free-text to label the state row.
+
+    Returns {url: "...", state_expires_in_seconds: 600}.
+    """
+    expected = settings().agent_run_token
+    if not expected:
+        raise HTTPException(status_code=503, detail="endpoint disabled (no token)")
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or not hmac.compare_digest(auth[len("Bearer "):], expected):
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+    account_ref = request.query_params.get("account_ref", "").strip()
+    if not account_ref:
+        raise HTTPException(status_code=400, detail="account_ref required")
+    notes = request.query_params.get("notes")
+
+    import asyncpg
+    from ads_agent.amazon.oauth import generate_consent_url
+
+    pool = await asyncpg.create_pool(
+        os.environ.get("POSTGRES_RW_URL") or settings().postgres_insights_ro_url,
+        min_size=1, max_size=2,
+    )
+    try:
+        url = await generate_consent_url(pool, account_ref=account_ref, notes=notes)
+    finally:
+        await pool.close()
+    return {"url": url, "state_expires_in_seconds": 600, "account_ref": account_ref}
+
+
+@app.post("/api/amazon/oauth/receive")
+async def api_amazon_oauth_receive(request: Request) -> dict:
+    """Callback landing — called by the Cloudflare Pages Function at
+    grow.glitchexecutor.com/amazon/oauth/callback after Amazon redirects the
+    user back with ?code=X&state=Y.
+
+    Gated by INTERNAL_API_SECRET (shared between CF Function and this server).
+    Body: {"code": "...", "state": "..."}
+    """
+    expected = os.environ.get("INTERNAL_API_SECRET", "").strip()
+    if not expected:
+        log.error("INTERNAL_API_SECRET is unset — refusing amazon oauth callback")
+        raise HTTPException(status_code=503, detail="oauth receiver disabled")
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or not hmac.compare_digest(auth[len("Bearer "):], expected):
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json body")
+    code  = (body.get("code")  or "").strip()
+    state = (body.get("state") or "").strip()
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="code and state are required")
+
+    import asyncpg
+    from ads_agent.amazon.oauth import receive_callback, OAuthError
+
+    pool = await asyncpg.create_pool(
+        os.environ.get("POSTGRES_RW_URL") or settings().postgres_insights_ro_url,
+        min_size=1, max_size=2,
+    )
+    try:
+        try:
+            result = await receive_callback(pool, code=code, state=state)
+        except OAuthError as e:
+            log.warning("oauth receive failed: %s", e)
+            raise HTTPException(status_code=400, detail=f"oauth: {e}")
+    finally:
+        await pool.close()
+    return result
+
+
 @app.post("/agent/run")
 async def agent_run(request: Request) -> dict:
     """Direct LangGraph entrypoint.
