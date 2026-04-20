@@ -143,8 +143,16 @@ def get_store(slug_or_domain: str) -> Store | None:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Postgres (auth-hub Session table, read-only role)
+    # Postgres — two DSNs:
+    #   RO:  role that can ONLY read the Shopify auth-hub `Session` table.
+    #        Used by `shopify.sessions` to pull per-store Shopify access tokens.
+    #   RW:  role that owns `ads_agent.*` (agent_memory, agent_actions, ...).
+    #        Used by memory writes, action inserts, approval callbacks, executor.
+    # If `postgres_rw_url` is blank, code falls back to `postgres_insights_ro_url`
+    # for backwards compatibility — but any write path will fail against a
+    # properly-locked RO role, which is what issue #3 is about. Set both in prod.
     postgres_insights_ro_url: str = "postgresql://insights_ro:changeme@127.0.0.1:5432/your_db_name"
+    postgres_rw_url: str = ""
 
     # Shopify per-app webhook HMAC secrets — JSON map { custom_app_slug: secret }
     shopify_webhook_secrets: str = "{}"
@@ -162,6 +170,15 @@ class Settings(BaseSettings):
     # Telegram
     telegram_bot_token_ads: str = ""
     telegram_admin_ids: str = ""  # csv of int ids
+    # Secret token configured via Telegram setWebhook?secret_token=... and
+    # echoed by Telegram in the `X-Telegram-Bot-Api-Secret-Token` header on
+    # every update. We reject updates that don't carry it (issue #1).
+    telegram_webhook_secret: str = ""
+
+    # Shared-secret bearer token required to invoke POST /agent/run.
+    # Blank = endpoint is disabled entirely (issue #4). In prod, put this behind
+    # Cloud Run IAM or an API gateway as well — do not --allow-unauthenticated.
+    agent_run_token: str = ""
 
     # LLMs (LiteLLM routes to these)
     anthropic_api_key: str = ""
@@ -180,6 +197,15 @@ class Settings(BaseSettings):
             return json.loads(self.shopify_webhook_secrets or "{}")
         except json.JSONDecodeError:
             return {}
+
+    @property
+    def postgres_rw_dsn(self) -> str:
+        """Writable DSN for `ads_agent.*` tables.
+
+        Falls back to `postgres_insights_ro_url` ONLY if `postgres_rw_url` is
+        unset — this keeps dev `.env` files working. In prod, set both.
+        """
+        return self.postgres_rw_url or self.postgres_insights_ro_url
 
     @property
     def admin_telegram_ids(self) -> set[int]:

@@ -32,7 +32,7 @@ import asyncpg
 import httpx
 
 from ads_agent.actions.models import ActionProposal, AYURPET_CHAT_ID
-from ads_agent.actions.notifier import post_proposal
+from ads_agent.actions.notifier import TelegramNotifyError, post_proposal
 
 log = logging.getLogger(__name__)
 
@@ -136,12 +136,22 @@ async def _fetch_adset_snapshot(ad_account_id: str) -> list[dict]:
 
 
 async def _recent_targets(pool: asyncpg.Pool, hours: int = DEDUP_HOURS) -> set[str]:
-    """Return set of target_object_id strings with an action row created within N hours."""
+    """Return set of target_object_id strings with a still-relevant action row
+    created within N hours.
+
+    Issue #6: rows with status='notify_failed' represent proposals where the
+    database row exists but no human ever saw the approval prompt. Those
+    MUST NOT block re-proposal — otherwise a transient Telegram outage can
+    black-hole a target for 72 hours. We exclude them here so the next
+    planner tick gets another shot at posting. Same rationale for 'expired'
+    rows (human never acted, TTL elapsed).
+    """
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """SELECT DISTINCT target_object_id
                FROM ads_agent.agent_actions
-               WHERE created_at > NOW() - ($1 || ' hours')::interval""",
+               WHERE created_at > NOW() - ($1 || ' hours')::interval
+                 AND status NOT IN ('notify_failed', 'expired')""",
             str(hours),
         )
     return {r["target_object_id"] for r in rows}
@@ -258,6 +268,12 @@ async def plan_for_store(pool: asyncpg.Pool, store_slug: str, chat_id: int) -> i
                     posted += 1
                     recent.add(r["adset_id"])  # don't double-propose same target
                     break  # one proposal per adset per planner run
+                except TelegramNotifyError as e:
+                    # Row exists as 'notify_failed' — do NOT add to `recent`
+                    # so the next planner tick can retry. Issue #6.
+                    log.warning("notify failed for %s (will retry next tick): %s",
+                                r["adset_id"], e)
+                    break
                 except Exception as e:
                     log.exception("post_proposal failed for %s: %s", r["adset_id"], e)
     return posted

@@ -50,7 +50,8 @@ async def main() -> None:
     )
 
     stores = [args.store] if args.store else sorted(STORE_APPROVAL_CHATS.keys())
-    dsn = os.environ["POSTGRES_INSIGHTS_RO_URL"]
+    # Planner writes to ads_agent.agent_actions — must be the RW DSN (issue #3).
+    dsn = os.environ.get("POSTGRES_RW_URL") or os.environ["POSTGRES_INSIGHTS_RO_URL"]
     pool = await asyncpg.create_pool(dsn, min_size=1, max_size=3, command_timeout=60.0)
     try:
         for slug in stores:

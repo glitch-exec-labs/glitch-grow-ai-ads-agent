@@ -28,8 +28,12 @@ async def _get_pool() -> asyncpg.Pool:
     if _pool is None:
         async with _pool_lock:
             if _pool is None:
+                # agent_memory is a write path — must use the RW DSN.
+                # See issue #3: the legacy POSTGRES_INSIGHTS_RO_URL is a
+                # documented read-only role and silently breaks inserts in
+                # a correctly-permissioned deployment.
                 _pool = await asyncpg.create_pool(
-                    settings().postgres_insights_ro_url,
+                    settings().postgres_rw_dsn,
                     min_size=1,
                     max_size=4,
                     command_timeout=5.0,

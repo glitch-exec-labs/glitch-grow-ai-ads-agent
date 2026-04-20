@@ -41,7 +41,9 @@ async def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
 
-    dsn = os.environ["POSTGRES_INSIGHTS_RO_URL"]
+    # Executor flips status approved→executing and writes result/prior_state —
+    # must be the RW DSN (issue #3).
+    dsn = os.environ.get("POSTGRES_RW_URL") or os.environ["POSTGRES_INSIGHTS_RO_URL"]
     pool = await asyncpg.create_pool(dsn, min_size=1, max_size=3, command_timeout=90.0)
     try:
         expired = await expire_old_pending(pool)
