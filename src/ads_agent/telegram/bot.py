@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import logging
 
-from telegram.ext import AIORateLimiter, Application, CommandHandler
+from telegram.ext import AIORateLimiter, Application, CallbackQueryHandler, CommandHandler
 
 from ads_agent.config import settings
+from ads_agent.telegram.callbacks import action_button_handler
 from ads_agent.telegram.handlers import (
+    cmd_actions,
     cmd_ads,
     cmd_alerts,
     cmd_amazon,
@@ -23,6 +25,7 @@ from ads_agent.telegram.handlers import (
     cmd_help,
     cmd_ideas,
     cmd_insights,
+    cmd_plan,
     cmd_roas,
     cmd_start,
     cmd_stores,
@@ -54,6 +57,10 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("alerts", cmd_alerts))
     app.add_handler(CommandHandler("amazon", cmd_amazon))
     app.add_handler(CommandHandler("attribution", cmd_attribution))
+    app.add_handler(CommandHandler("plan", cmd_plan))
+    app.add_handler(CommandHandler("actions", cmd_actions))
+    # Inline-keyboard Approve/Reject buttons for action proposals
+    app.add_handler(CallbackQueryHandler(action_button_handler, pattern=r"^act:"))
     return app
 
 

@@ -134,6 +134,109 @@ async def cmd_attribution(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
     await _run_and_reply(update, "attribution", 30, ctx.args or [])
 
 
+# ─── v2 action layer: /plan + /actions ──────────────────────────────────────
+
+async def cmd_plan(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show pending action proposals for a store. Usage: /plan <store>"""
+    if not is_admin(update):
+        return
+    import asyncpg, os
+    args = ctx.args or []
+    slug = args[0] if args else None
+
+    conn = await asyncpg.connect(os.environ["POSTGRES_INSIGHTS_RO_URL"])
+    try:
+        if slug:
+            rows = await conn.fetch(
+                """SELECT id, action_kind, target_object_name, rationale, created_at,
+                          expires_at, status
+                   FROM ads_agent.agent_actions
+                   WHERE store_slug=$1 AND status='pending_approval'
+                   ORDER BY created_at DESC""",
+                slug,
+            )
+        else:
+            rows = await conn.fetch(
+                """SELECT id, store_slug, action_kind, target_object_name, rationale,
+                          created_at, expires_at, status
+                   FROM ads_agent.agent_actions
+                   WHERE status='pending_approval'
+                   ORDER BY created_at DESC"""
+            )
+    finally:
+        await conn.close()
+
+    if not rows:
+        await update.message.reply_text(
+            f"No pending proposals{' for `'+slug+'`' if slug else ''}.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    lines = [f"*Pending proposals{' · '+slug if slug else ''}*", ""]
+    for r in rows:
+        ttl_h = max(0, int((r["expires_at"] - r["created_at"]).total_seconds() / 3600))
+        lines.append(
+            f"#`{r['id']}` · *{r['action_kind']}* on `{(r['target_object_name'] or '?')[:40]}`"
+            + (f" ({r.get('store_slug')})" if not slug else "")
+        )
+        lines.append(f"  _{r['rationale'][:180]}_")
+        lines.append(f"  created {r['created_at'].strftime('%Y-%m-%d %H:%M')} UTC · TTL {ttl_h}h")
+        lines.append("")
+
+    await update.message.reply_text("\n".join(lines)[:4000], parse_mode=ParseMode.MARKDOWN)
+
+
+async def cmd_actions(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show recent action history. Usage: /actions [store] [status]"""
+    if not is_admin(update):
+        return
+    import asyncpg, os
+    args = ctx.args or []
+    slug = args[0] if args else None
+    status = args[1] if len(args) > 1 else None
+
+    conn = await asyncpg.connect(os.environ["POSTGRES_INSIGHTS_RO_URL"])
+    try:
+        where = ["1=1"]
+        vals: list = []
+        if slug:
+            vals.append(slug); where.append(f"store_slug=${len(vals)}")
+        if status:
+            vals.append(status); where.append(f"status=${len(vals)}")
+        sql = f"""SELECT id, store_slug, action_kind, target_object_name, status,
+                         created_at, executed_at
+                  FROM ads_agent.agent_actions
+                  WHERE {' AND '.join(where)}
+                  ORDER BY created_at DESC LIMIT 15"""
+        rows = await conn.fetch(sql, *vals)
+    finally:
+        await conn.close()
+
+    if not rows:
+        await update.message.reply_text("No actions in history.")
+        return
+
+    lines = ["*Recent actions (last 15)*", ""]
+    status_emoji = {
+        "pending_approval": "⏳",
+        "approved":         "✅",
+        "executing":        "🔄",
+        "executed":         "✔️",
+        "rejected":         "❌",
+        "expired":          "⌛",
+        "failed":           "⚠️",
+        "rolled_back":      "↩️",
+    }
+    for r in rows:
+        e = status_emoji.get(r["status"], "•")
+        lines.append(
+            f"{e} #`{r['id']}` · {r['action_kind']} · `{(r['target_object_name'] or '?')[:30]}` "
+            f"({r['store_slug']}) · {r['status']}"
+        )
+    await update.message.reply_text("\n".join(lines)[:4000], parse_mode=ParseMode.MARKDOWN)
+
+
 async def cmd_creative(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     """Usage: /creative <ad_id> [store_slug]. store_slug injects per-family context."""
     if not is_admin(update):
