@@ -1,4 +1,4 @@
-# Changelog — `glitch-grow-ads-agent`
+# Changelog — `glitch-grow-ai-ads-agent`
 
 Auto-regenerated from `git log` by `/home/support/bin/changelog-regen`,
 called before every push by `/home/support/bin/git-sync-all` (cron `*/15 * * * *`).

@@ -89,7 +89,7 @@ without redeploying the agent.
 
 | Repo | Role | Port | Status |
 |---|---|---|---|
-| **glitch-grow-ads-agent** (this repo) | LangGraph agent, Telegram bot, PostHog attribution, memory | `3110` | v1 live |
+| **glitch-grow-ai-ads-agent** (this repo) | LangGraph agent, Telegram bot, PostHog attribution, memory | `3110` | v1 live |
 | [glitch-ads-mcp](https://github.com/glitch-exec-labs/glitch-ads-mcp) | Meta Ads (fork of pipeboard's meta-ads-mcp) | `3103` | live |
 | [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) | Amazon Seller Central + Amazon Ads + attribution bridge. Runs in Supermetrics-fallback mode until LWA approval | `3105` | live (fallback mode) |
 
@@ -163,8 +163,8 @@ without redeploying the agent.
 ### Install
 
 ```bash
-git clone https://github.com/glitch-exec-labs/glitch-grow-ads-agent.git
-cd glitch-grow-ads-agent
+git clone https://github.com/glitch-exec-labs/glitch-grow-ai-ads-agent.git
+cd glitch-grow-ai-ads-agent
 
 # Install deps (uv recommended)
 uv sync
@@ -258,12 +258,12 @@ python -m ads_agent.telegram.bot
 ### Deploy to Cloud Run
 
 ```bash
-docker build -t glitch-grow-ads-agent .
-docker tag glitch-grow-ads-agent gcr.io/YOUR_PROJECT/glitch-grow-ads-agent
-docker push gcr.io/YOUR_PROJECT/glitch-grow-ads-agent
+docker build -t glitch-grow-ai-ads-agent .
+docker tag glitch-grow-ai-ads-agent gcr.io/YOUR_PROJECT/glitch-grow-ai-ads-agent
+docker push gcr.io/YOUR_PROJECT/glitch-grow-ai-ads-agent
 
-gcloud run deploy glitch-grow-ads-agent \
-  --image gcr.io/YOUR_PROJECT/glitch-grow-ads-agent \
+gcloud run deploy glitch-grow-ai-ads-agent \
+  --image gcr.io/YOUR_PROJECT/glitch-grow-ai-ads-agent \
   --region us-central1 \
   --no-allow-unauthenticated \
   --set-secrets="ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,TELEGRAM_WEBHOOK_SECRET=TELEGRAM_WEBHOOK_SECRET:latest,AGENT_RUN_TOKEN=AGENT_RUN_TOKEN:latest,..."
