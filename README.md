@@ -1,6 +1,6 @@
-# Glitch Grow Ads Agent
+# Glitch Grow AI Ads Agent
 
-> **An autonomous AI ads-ops agent that plans, analyzes, executes, and delivers ROAS end-to-end** — across Shopify, Meta, and Amazon, from a single Telegram surface.
+> **An AI ads agent for Shopify and e-commerce brands that plans, analyzes, executes, and improves ROAS end-to-end** — across Shopify, Meta, and Amazon, from a single Telegram surface.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![LangGraph](https://img.shields.io/badge/orchestrator-LangGraph-orange)](https://github.com/langchain-ai/langgraph)
@@ -8,6 +8,8 @@
 [![Cloud Run ready](https://img.shields.io/badge/deploy-Cloud%20Run-4285F4?logo=google-cloud)](https://cloud.google.com/run)
 
 ---
+
+> Part of **Glitch Grow**, the digital marketing domain inside **Glitch Executor Labs** — one builder shipping products across **Trade**, **Edge**, and **Grow**.
 
 ## What this is
 
