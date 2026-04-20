@@ -137,14 +137,17 @@ async def api_amazon_consent_url(request: Request) -> dict:
     notes = request.query_params.get("notes")
 
     import asyncpg
-    from ads_agent.amazon.oauth import generate_consent_url
+    from ads_agent.amazon.oauth import generate_consent_url, OAuthError
 
     pool = await asyncpg.create_pool(
         os.environ.get("POSTGRES_RW_URL") or settings().postgres_insights_ro_url,
         min_size=1, max_size=2,
     )
     try:
-        url = await generate_consent_url(pool, account_ref=account_ref, notes=notes)
+        try:
+            url = await generate_consent_url(pool, account_ref=account_ref, notes=notes)
+        except OAuthError as e:
+            raise HTTPException(status_code=400, detail=f"oauth config: {e}")
     finally:
         await pool.close()
     return {"url": url, "state_expires_in_seconds": 600, "account_ref": account_ref}
