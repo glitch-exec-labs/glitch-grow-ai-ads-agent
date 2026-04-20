@@ -58,13 +58,18 @@ async def account_spend(ad_account_id: str, days: int = 7) -> dict:
         return {"spend": 0.0, "impressions": 0, "clicks": 0, "purchases": 0, "purchase_value": 0.0, "currency": "?"}
     row = rows[0]
 
+    # Use omni_purchase ONLY — Meta's canonical dedup action type (matches
+    # Ads Manager's "Purchase ROAS" column). The other aliases (purchase,
+    # fb_pixel_purchase, onsite_web_*_purchase) represent the same events
+    # viewed through different attribution lenses; summing them 3-5× inflates
+    # the ROAS number. See PURCHASE_ACTION_TYPES above for full rationale.
     purchases = 0
     purchase_value = 0.0
     for a in row.get("actions", []) or []:
-        if a.get("action_type") in ("purchase", "offsite_conversion.fb_pixel_purchase", "omni_purchase"):
+        if a.get("action_type") == "omni_purchase":
             purchases += int(a.get("value", 0) or 0)
     for av in row.get("action_values", []) or []:
-        if av.get("action_type") in ("purchase", "offsite_conversion.fb_pixel_purchase", "omni_purchase"):
+        if av.get("action_type") == "omni_purchase":
             purchase_value += float(av.get("value", 0) or 0)
 
     return {
@@ -86,12 +91,20 @@ async def account_info(ad_account_id: str) -> dict:
 # Ad-level insights + creative fetch (v1 /ads /creative /ideas substrate)
 # ---------------------------------------------------------------------------
 
+# Meta returns the same purchase event under multiple `action_type` aliases —
+# `purchase`, `omni_purchase`, `offsite_conversion.fb_pixel_purchase`,
+# `onsite_web_purchase`, `onsite_web_app_purchase` — all representing the
+# same underlying conversions. Summing across them double-counts by 3-5×.
+#
+# `omni_purchase` is Meta's canonical cross-device deduplicated parent
+# metric and is the same number shown in Ads Manager's "Purchase ROAS"
+# column. Use ONLY that.
+#
+# Confirmed 2026-04-20 via raw API call against act_654879327196107:
+#   purchase_roas.omni_purchase = 1.22×  (matches dashboard)
+#   summing all 5 aliases = 3.67×         (wrong — earlier bug in this code)
 PURCHASE_ACTION_TYPES = {
-    "purchase",
-    "offsite_conversion.fb_pixel_purchase",
     "omni_purchase",
-    "onsite_web_purchase",
-    "onsite_web_app_purchase",
 }
 
 

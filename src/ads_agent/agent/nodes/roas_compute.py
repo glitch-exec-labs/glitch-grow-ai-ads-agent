@@ -132,7 +132,7 @@ async def roas_compute_node(state: dict) -> dict:
         "",
         f"*Pipeline ROAS: {pipeline_roas:.2f}x*  (pipeline revenue / Meta spend, same-currency — use this as the truth until delivery-partner payment status is fixed)",
         f"Paid-only ROAS: {paid_roas:.2f}x  (conservative floor, under-reports because courier→Shopify status sync is broken)",
-        f"Meta-reported ROAS: {meta_roas:.2f}x  (inflated by pixel/CAPI dedup issue)",
+        f"Meta-reported ROAS: {meta_roas:.2f}x  (from `omni_purchase` — matches Meta Ads Manager; can't see Amazon conversions)",
         "",
         f"*CAC per pipeline order: {cac_native:,.2f} {native_ccy or '?'}*{cac_verdict}",
     ]
