@@ -50,12 +50,13 @@ HTTP_TIMEOUT_S = 60.0
 
 # Which Meta pixel action-types count as purchases / ATC / content-view.
 # Matches the same taxonomy used in src/ads_agent/meta/graph_client.py.
+# Meta returns the same purchase event under 5 aliases (purchase, omni_purchase,
+# fb_pixel_purchase, onsite_web_*_purchase). Summing them triple-counts.
+# omni_purchase is the canonical deduplicated metric and matches Meta Ads
+# Manager's "Purchase ROAS" column exactly. Verified 2026-04-20 against
+# act_654879327196107 (1.22× matches dashboard; 5-alias sum gave wrong 3.67×).
 PURCHASE_ACTION_TYPES = {
-    "purchase",
-    "offsite_conversion.fb_pixel_purchase",
     "omni_purchase",
-    "onsite_web_purchase",
-    "onsite_web_app_purchase",
 }
 ATC_ACTION_TYPES = {
     "add_to_cart",
