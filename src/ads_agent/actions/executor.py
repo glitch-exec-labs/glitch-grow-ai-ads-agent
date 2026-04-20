@@ -36,6 +36,32 @@ async def _fetch_prior_state(action_kind: str, target_id: str) -> dict[str, Any]
     return {}
 
 
+def _is_no_op(kind: str, prior: dict, params: dict) -> tuple[bool, str]:
+    """Is this action already satisfied by the target's current state?
+    Guards against no-op API calls (e.g. pausing an adset whose campaign is
+    already paused, or setting a budget to a value it already has).
+    """
+    # prior may wrap under 'adset' / 'ad' keys from get_*_details
+    info = prior
+    for key in ("adset", "ad", "result"):
+        if isinstance(info, dict) and key in info and isinstance(info[key], dict):
+            info = info[key]
+    eff = (info.get("effective_status") or "").upper() if isinstance(info, dict) else ""
+
+    if kind in ("pause_adset", "pause_ad") and eff in (
+        "PAUSED", "ADSET_PAUSED", "CAMPAIGN_PAUSED", "DISAPPROVED", "ARCHIVED", "DELETED",
+    ):
+        return True, f"target already effectively paused (effective_status={eff}); skipping API call"
+    if kind == "resume_adset" and eff == "ACTIVE":
+        return True, "target already ACTIVE; resume is a no-op"
+    if kind == "update_adset_budget":
+        current = info.get("daily_budget")
+        new = params.get("new_daily_budget")
+        if current is not None and new is not None and int(current) == int(new):
+            return True, f"daily_budget already ₹{int(current)/100:,.0f}; no change needed"
+    return False, ""
+
+
 async def _execute_one(pool: asyncpg.Pool, action: dict) -> None:
     action_id = action["id"]
     kind      = action["action_kind"]
@@ -46,8 +72,26 @@ async def _execute_one(pool: asyncpg.Pool, action: dict) -> None:
     # Snapshot prior state (best-effort, not fatal)
     prior = await _fetch_prior_state(kind, target_id)
 
-    # Build tool arguments
+    # Build tool arguments + NO-OP GUARD before firing anything at Meta
     tool_args = params_fn(action)
+    is_noop, noop_reason = _is_no_op(kind, prior, action.get("params") or {})
+    if is_noop:
+        log.warning("action %s is a no-op: %s — marking 'executed' with skip flag",
+                    action_id, noop_reason)
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """UPDATE ads_agent.agent_actions
+                   SET status='executed', executed_at=NOW(),
+                       prior_state=$1::jsonb,
+                       result=$2::jsonb
+                   WHERE id=$3""",
+                json.dumps(prior),
+                json.dumps({"skipped_no_op": True, "reason": noop_reason}),
+                action_id,
+            )
+        await _notify_resolution(action, "noop", error=noop_reason)
+        return
+
     log.info("Executing action %s: %s(%s)", action_id, mcp_tool, tool_args)
 
     try:
@@ -94,6 +138,12 @@ async def _notify_resolution(action: dict, outcome: str, *,
             f"✅ *Action #{action['id']} executed* — `{name}`\n"
             f"_Meta responded OK. Prior state snapshotted; `/rollback {action['id']}` "
             f"will revert if needed within 72h._"
+        )
+    elif outcome == "noop":
+        msg = (
+            f"ℹ️ *Action #{action['id']} skipped (no-op)* — `{name}`\n"
+            f"Reason: {error}\n"
+            f"_No API call was made. Row closed as executed with skip flag._"
         )
     else:
         msg = (

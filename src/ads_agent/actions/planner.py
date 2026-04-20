@@ -110,9 +110,13 @@ async def _fetch_adset_snapshot(ad_account_id: str) -> list[dict]:
     for r in ins:
         m = meta_by_id.get(r["adset_id"], {})
         eff = m.get("effective_status", "UNKNOWN")
+        # Skip: archived/deleted (obvious) AND campaign-paused (pausing an
+        # already-effectively-paused adset would be a no-op). Keep adset-level
+        # PAUSED because the planner may want to RESUME it.
         if eff not in ("ACTIVE", "ADSET_PAUSED", "PAUSED"):
-            # Skip archived, deleted, etc.
             continue
+        if eff == "CAMPAIGN_PAUSED":
+            continue  # won't consider until campaign is un-paused
         roas = None
         for pr in r.get("purchase_roas", []) or []:
             if pr.get("action_type") == "omni_purchase":
