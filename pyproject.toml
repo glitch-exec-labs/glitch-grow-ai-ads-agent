@@ -1,5 +1,5 @@
 [project]
-name = "glitch-grow-ads-agent"
+name = "glitch-grow-ai-ads-agent"
 version = "0.0.1"
 description = "Systematic AI agent for Glitch Grow Shopify ads ops (insights, tracking reconciliation, HITL ad write-actions)"
 requires-python = ">=3.11"
