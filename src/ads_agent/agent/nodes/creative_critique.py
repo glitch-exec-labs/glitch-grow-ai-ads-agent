@@ -120,14 +120,25 @@ async def creative_critique_node(state: dict) -> dict:
         + "Produce the structured critique now. If <prior_context> references past critiques of this or similar ads, note any changes (metric drift, fatigue signals) and avoid repeating unchanged points."
     )
 
+    # Brand-playbook brief (Section X) grounds the critique in codified
+    # expertise. slug may be empty if caller didn't pass store_slug through
+    # state — in that case node_brief() returns "" and we use vanilla prompt.
+    from ads_agent.playbook import node_brief
+    brand_key = slug.split("-")[0] if slug else ""
+    brand_brief = node_brief("creative_critique", brand_key) if brand_key else ""
+    system_prompt = CRITIQUE_SYSTEM + (
+        f"\n\n---\nBRAND PLAYBOOK CONTEXT (authoritative, overrides generic advice):\n{brand_brief}\n"
+        if brand_brief else ""
+    )
+
     images = [thumbnail] if thumbnail else []
     if not images:
         # Fallback to text-only if no thumbnail
         from ads_agent.agent.llm import complete
-        out = await complete(prompt, tier="smart", system=CRITIQUE_SYSTEM, max_tokens=3000)
+        out = await complete(prompt, tier="smart", system=system_prompt, max_tokens=3000)
     else:
         # max_tokens=3000 covers Gemini 2.5's "thinking" token budget plus ~1500 output chars.
-        out = await complete_vision(prompt, images, tier="smart", system=CRITIQUE_SYSTEM, max_tokens=3000)
+        out = await complete_vision(prompt, images, tier="smart", system=system_prompt, max_tokens=3000)
 
     header = (
         f"*Creative critique · ad `{ad_id}`*\n"

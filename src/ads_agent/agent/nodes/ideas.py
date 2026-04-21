@@ -111,11 +111,21 @@ async def ideas_node(state: dict) -> dict:
         + "If <prior_context> shows previous /ideas runs for this store, do NOT repeat angles that were already proposed — extend or diverge."
     )
 
+    # Brand-playbook brief keeps the LLM grounded in codified expertise
+    # (Section X of /playbooks/<brand>.md). Falls back to vanilla IDEAS_SYSTEM
+    # when no playbook exists for the brand (Urban family today).
+    from ads_agent.playbook import node_brief
+    brand_brief = node_brief("ideas", store.slug.split("-")[0])
+    system_prompt = IDEAS_SYSTEM + (
+        f"\n\n---\nBRAND PLAYBOOK CONTEXT (authoritative, overrides generic advice):\n{brand_brief}\n"
+        if brand_brief else ""
+    )
+
     if thumbnails:
-        out = await complete_vision(prompt, thumbnails, tier="smart", system=IDEAS_SYSTEM, max_tokens=4000)
+        out = await complete_vision(prompt, thumbnails, tier="smart", system=system_prompt, max_tokens=4000)
     else:
         from ads_agent.agent.llm import complete
-        out = await complete(prompt, tier="smart", system=IDEAS_SYSTEM, max_tokens=4000)
+        out = await complete(prompt, tier="smart", system=system_prompt, max_tokens=4000)
 
     header = f"*Creative briefs · {store.brand} · based on top 3 of last {days}d*\n\n"
     return {**state, "reply_text": header + out}
