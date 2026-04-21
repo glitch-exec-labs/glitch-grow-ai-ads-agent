@@ -80,7 +80,9 @@ async def tracking_audit_node(state: dict) -> dict:
         f"Meta reported purchases: {total_meta_purchases}\n"
         f"Meta reported purchase value: {total_meta_purchase_value:,.2f}\n"
         f"Meta spend: {total_spend:,.2f}\n"
-        f"UTM coverage on orders: {shopify.utm_coverage_pct}%\n"
+        f"UTM coverage (effective, excludes in-app checkout): {shopify.utm_coverage_pct}%\n"
+        f"UTM coverage (raw, all orders): {shopify.utm_coverage_raw_pct}%\n"
+        f"In-app-checkout orders (Meta Shop / subscription / POS — UTMs impossible): {shopify.in_app_checkout_orders}\n"
         f"Purchase-count gap |meta − shopify| / shopify: {purchase_gap_pct:.1f}%\n"
     )
 
@@ -100,7 +102,19 @@ async def tracking_audit_node(state: dict) -> dict:
     lines.append(f"Shopify paid orders: {shopify.paid_orders} · paid revenue: {shopify.paid_revenue:,.2f} {store.currency}")
     lines.append(f"Meta purchases: {total_meta_purchases} · Meta reported revenue: {total_meta_purchase_value:,.2f}")
     lines.append(f"Meta spend: {total_spend:,.2f}")
-    lines.append(f"UTM coverage: {shopify.utm_coverage_pct}%  |  purchase-count gap: {purchase_gap_pct:.1f}%")
+    # Report both UTM numbers when they diverge materially (in-app-heavy brand).
+    # Otherwise just the effective one is enough.
+    if (shopify.in_app_checkout_orders
+            and shopify.utm_coverage_pct - shopify.utm_coverage_raw_pct > 5):
+        lines.append(
+            f"UTM coverage: {shopify.utm_coverage_pct}% of web orders "
+            f"(raw {shopify.utm_coverage_raw_pct}% — {shopify.in_app_checkout_orders} "
+            f"in-app / sub orders excluded)  |  purchase-count gap: {purchase_gap_pct:.1f}%"
+        )
+    else:
+        lines.append(
+            f"UTM coverage: {shopify.utm_coverage_pct}%  |  purchase-count gap: {purchase_gap_pct:.1f}%"
+        )
     lines.append("")
     if diagnosis:
         lines.append(f"*Diagnosis:* {diagnosis}")
