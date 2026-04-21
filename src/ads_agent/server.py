@@ -135,9 +135,12 @@ async def api_amazon_consent_url(request: Request) -> dict:
     if not account_ref:
         raise HTTPException(status_code=400, detail="account_ref required")
     notes = request.query_params.get("notes")
+    # Optional scope override — useful for testing plumbing without Ads API
+    # approval by using `scope=profile` (always allowed on any Security Profile).
+    scope_override = request.query_params.get("scope")
 
     import asyncpg
-    from ads_agent.amazon.oauth import generate_consent_url, OAuthError
+    from ads_agent.amazon.oauth import generate_consent_url, OAuthError, DEFAULT_SCOPE
 
     pool = await asyncpg.create_pool(
         os.environ.get("POSTGRES_RW_URL") or settings().postgres_insights_ro_url,
@@ -145,12 +148,21 @@ async def api_amazon_consent_url(request: Request) -> dict:
     )
     try:
         try:
-            url = await generate_consent_url(pool, account_ref=account_ref, notes=notes)
+            url = await generate_consent_url(
+                pool, account_ref=account_ref,
+                scope=scope_override or DEFAULT_SCOPE,
+                notes=notes,
+            )
         except OAuthError as e:
             raise HTTPException(status_code=400, detail=f"oauth config: {e}")
     finally:
         await pool.close()
-    return {"url": url, "state_expires_in_seconds": 600, "account_ref": account_ref}
+    return {
+        "url": url,
+        "state_expires_in_seconds": 600,
+        "account_ref": account_ref,
+        "scope": scope_override or DEFAULT_SCOPE,
+    }
 
 
 @app.post("/api/amazon/oauth/receive")
