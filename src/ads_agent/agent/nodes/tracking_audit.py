@@ -15,7 +15,7 @@ from ads_agent.agent.llm import complete
 from ads_agent.config import STORE_AD_ACCOUNTS, get_store
 from ads_agent.meta.graph_client import MetaGraphError, account_spend
 from ads_agent.posthog.queries import store_insights
-from ads_agent.reconcile.recipes import RECIPES
+from ads_agent.reconcile.recipes import RECIPES, recipe_for
 
 AUDIT_SYSTEM = """You are a Meta Ads + Shopify tracking reconciliation analyst.
 
@@ -87,7 +87,16 @@ async def tracking_audit_node(state: dict) -> dict:
     )
 
     # max_tokens=2500 covers Gemini 2.5's "thinking" token budget plus room for diagnosis + recipes.
-    llm_out = await complete(numbers, tier="smart", system=AUDIT_SYSTEM, max_tokens=2500)
+    # Inject brand-specific playbook brief to keep diagnoses grounded in
+    # Ayurpet's actual tracking topology (no Shiprocket/Flexipe hallucination,
+    # correct Meta Shop in-app checkout handling, etc.).
+    from ads_agent.playbook import node_brief
+    brand_brief = node_brief("tracking_audit", store.slug.split("-")[0])
+    system_prompt = AUDIT_SYSTEM + (
+        f"\n\n---\nBRAND PLAYBOOK CONTEXT (authoritative, overrides generic advice):\n{brand_brief}\n"
+        if brand_brief else ""
+    )
+    llm_out = await complete(numbers, tier="smart", system=system_prompt, max_tokens=2500)
 
     # Parse the strict format
     diagnosis = ""
@@ -122,7 +131,7 @@ async def tracking_audit_node(state: dict) -> dict:
         lines.append("")
         lines.append("*Recommended fixes:*")
         for k in keys:
-            lines.append(f"• {RECIPES[k]}")
+            lines.append(f"• {recipe_for(store.slug, k)}")
     else:
         lines.append("(Agent returned no actionable recipes for this window.)")
 
