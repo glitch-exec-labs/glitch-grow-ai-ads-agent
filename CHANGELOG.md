@@ -11,9 +11,14 @@ Body text (if present) shown as indented sub-bullets.
 
 ---
 
+## 2026-04-22
+
+- **00:00 UTC** — auto-sync: 2026-04-22 00:00 UTC (`4a282f5`) — 1 file
+        D	.claude/scheduled_tasks.lock
+
 ## 2026-04-21
 
-- **23:30 UTC** — auto-sync: 2026-04-21 23:30 UTC (`0368854`) — 1 file
+- **23:30 UTC** — auto-sync: 2026-04-21 23:30 UTC (`5787a93`) — 2 files
         A	.claude/scheduled_tasks.lock
 - **21:09 UTC** — feat(playbook): inject brand brief into ideas + creative_critique nodes (`7f9a831`) — 2 files
     Mirrors the wiring already in tracking_audit_node: loads Section X brief
