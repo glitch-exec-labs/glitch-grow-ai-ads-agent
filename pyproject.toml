@@ -34,6 +34,10 @@ dependencies = [
   # PostHog
   "posthog>=3.7",
 
+  # GA4 (first-party attribution ground truth for Ayurpet + future Shopify-native stores)
+  "google-analytics-data>=0.18",
+  "google-analytics-admin>=0.24",
+
   # Telegram
   "python-telegram-bot[rate-limiter,webhooks]>=21.6",
 

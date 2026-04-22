@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from ads_agent.config import STORE_AD_ACCOUNTS, get_store
 from ads_agent.fx import convert
+from ads_agent.ga4.client import ga4_metrics
 from ads_agent.meta.graph_client import MetaGraphError, account_spend
 from ads_agent.posthog.queries import store_insights
 
@@ -95,6 +96,16 @@ async def roas_compute_node(state: dict) -> dict:
                     f"{d['purchases']} purchases · reported rev {value_native:,.2f} {meta_ccy} (≈ {value_shop:,.2f} {shop_ccy})"
                 )
 
+    # GA4 first-party attribution — optional, only for stores mapped in
+    # STORE_GA4_STREAMS. Returns None silently for unmapped stores so brands
+    # still on the old path don't see any behavior change.
+    ga4 = await ga4_metrics(store.slug, days)
+    ga4_revenue_shop = 0.0
+    ga4_roas = 0.0
+    if ga4 and ga4.revenue > 0:
+        ga4_revenue_shop = await convert(ga4.revenue, ga4.currency, shop_ccy)
+        ga4_roas = (ga4_revenue_shop / total_spend_shop) if total_spend_shop > 0 else 0.0
+
     # Paid-only view (conservative floor — current "financial_status=paid" count)
     paid_roas = (shopify.paid_revenue / total_spend_shop) if total_spend_shop > 0 else 0.0
 
@@ -129,13 +140,28 @@ async def roas_compute_node(state: dict) -> dict:
         f"Pipeline orders (paid+pending): *{pipeline_orders}*  ·  paid: {shopify.paid_orders}  ·  pending: {shopify.pending_orders}  ·  cancelled: {shopify.cancelled_orders}",
         f"Pipeline revenue: {pipeline_revenue:,.2f} {shop_ccy}  (paid: {shopify.paid_revenue:,.2f}, pending: {shopify.pending_revenue:,.2f})",
         f"Meta spend: {total_spend_native:,.2f} {native_ccy or '?'}  (≈ {total_spend_shop:,.2f} {shop_ccy}){fx_tag}",
+    ]
+    # GA4 block only appears for mapped stores; keeps the message compact for
+    # brands that don't have GA4 wired in yet.
+    if ga4:
+        lines.append(
+            f"GA4: *{ga4.purchases}* purchases · {ga4_revenue_shop:,.2f} {shop_ccy} revenue · "
+            f"{ga4.sessions:,} sessions · {ga4.converted_sessions} converted sessions"
+        )
+    lines.extend([
         "",
         f"*Pipeline ROAS: {pipeline_roas:.2f}x*  (pipeline revenue / Meta spend, same-currency — use this as the truth until delivery-partner payment status is fixed)",
         f"Paid-only ROAS: {paid_roas:.2f}x  (conservative floor, under-reports because courier→Shopify status sync is broken)",
         f"Meta-reported ROAS: {meta_roas:.2f}x  (from `omni_purchase` — matches Meta Ads Manager; can't see Amazon conversions)",
+    ])
+    if ga4:
+        lines.append(
+            f"*GA4 ROAS: {ga4_roas:.2f}x*  (first-party ground truth · session-attributed, excludes Amazon / in-app Meta Shop)"
+        )
+    lines.extend([
         "",
         f"*CAC per pipeline order: {cac_native:,.2f} {native_ccy or '?'}*{cac_verdict}",
-    ]
+    ])
     if account_lines:
         lines.append("")
         lines.append("Per-account breakdown (native currency first):")

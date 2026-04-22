@@ -119,6 +119,50 @@ def _load_store_ad_accounts() -> dict[str, list[str]]:
 STORE_AD_ACCOUNTS: dict[str, list[str]] = _load_store_ad_accounts()
 
 
+# ---------------------------------------------------------------------------
+# GA4 stream mapping — store slug → GA4 property + data stream.
+#
+# Shape of STORE_GA4_STREAMS_JSON env var:
+#   {
+#     "ayurpet-ind":    {"property_id": "484508586", "stream_id": "10481705777"},
+#     "ayurpet-global": {"property_id": "484508586", "stream_id": "14412103683"}
+#   }
+#
+# property_id  — GA4 property number (shared between IN + Global under AYURPET)
+# stream_id    — data-stream ID used to filter reports to one domain
+#
+# Stores without an entry here are skipped by GA4-dependent nodes (no error,
+# no output line) so the agent keeps working for brands that don't have GA4
+# plumbed in yet (Urban family, Mokshya as of 2026-04-22).
+# ---------------------------------------------------------------------------
+
+
+def _load_store_ga4_streams() -> dict[str, dict[str, str]]:
+    raw = os.environ.get("STORE_GA4_STREAMS_JSON", "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError, ValueError) as ex:
+        log.warning("STORE_GA4_STREAMS_JSON invalid, returning empty map: %s", ex)
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    for slug, cfg in parsed.items():
+        if not isinstance(cfg, dict):
+            log.warning("STORE_GA4_STREAMS_JSON[%s] is not an object — skipping", slug)
+            continue
+        pid = str(cfg.get("property_id") or "").strip()
+        sid = str(cfg.get("stream_id") or "").strip()
+        if not pid:
+            log.warning("STORE_GA4_STREAMS_JSON[%s] missing property_id — skipping", slug)
+            continue
+        out[slug] = {"property_id": pid, "stream_id": sid}
+    return out
+
+
+STORE_GA4_STREAMS: dict[str, dict[str, str]] = _load_store_ga4_streams()
+
+
 # Scopes we need above the existing write_orders baseline to do analytics reads.
 # Apply these by bumping *_SCOPES csv in /home/support/multi-store-theme-manager/.env
 # then forcing merchant re-auth.
@@ -186,6 +230,11 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     vertex_project: str = ""
     vertex_location: str = "us-central1"
+
+    # GA4 — first-party attribution. Path to a service-account JSON with
+    # Viewer role on the relevant GA4 properties. Blank → GA4 nodes skip
+    # silently, which is the right behavior for brands that aren't wired in.
+    ga4_service_account_json_path: str = ""
 
     # Runtime
     public_base_url: str = "https://ads.yourdomain.com"
