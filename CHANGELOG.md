@@ -13,7 +13,10 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-22
 
-- **19:45 UTC** — auto-sync: 2026-04-22 19:45 UTC (`52ae0de`) — 2 files
+- **20:00 UTC** — auto-sync: 2026-04-22 20:00 UTC (`75113f0`) — 2 files
+        A	src/ads_agent/agent/analysis/campaign_analyst.py
+        M	src/ads_agent/agent/analysis/campaign_decomposer.py
+- **19:45 UTC** — auto-sync: 2026-04-22 19:45 UTC (`991ada7`) — 3 files
         A	src/ads_agent/agent/analysis/__init__.py
         A	src/ads_agent/agent/analysis/campaign_decomposer.py
 - **18:31 UTC** — feat(actions): guardrails for pause-on-paused and raise-on-undersized (`56cc49a`) — 2 files
