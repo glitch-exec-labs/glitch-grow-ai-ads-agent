@@ -24,8 +24,23 @@ from ads_agent.config import STORE_MAP_ACCOUNTS, get_store
 from ads_agent.map.mcp_client import (
     MapMcpError,
     account_recs,
+    ask_analyst,
     budget_recs,
     list_sp_campaigns,
+)
+
+# Templated analyst prompt used when Amazon's native account_recs endpoint
+# isn't available (currently US-only). Asks for specific, action-oriented
+# output matching what account_recs would have produced.
+_ANALYST_FALLBACK_QUESTION = (
+    "For the last 14 days on this account, list the 5 highest-impact "
+    "optimization opportunities across Sponsored Products. For each one, "
+    "include: (a) the specific campaign name / ad group name / keyword / ASIN "
+    "the opportunity concerns, (b) a concrete metric that justifies it "
+    "(e.g. 'cost 520 with 0 sales14d' or 'impression share 18%'), (c) the "
+    "recommended action in one verb phrase (pause / lower bid to X / "
+    "increase budget to Y / add negative keyword). Rank by estimated "
+    "weekly savings or incremental sales. Be concise — no preamble."
 )
 
 log = logging.getLogger(__name__)
@@ -85,13 +100,43 @@ async def amazon_recs_node(state: dict) -> dict:
     elif "error" in recs:
         lines.append(f"*Account recs:* error — {recs['error'][:100]}")
     else:
-        # MAP returns error strings under `text` for unsupported endpoints
-        # (e.g. account_recs is US-only — other marketplaces get a helpful
-        # "use ask_report_analyst instead" message).
+        # MAP's account_recs endpoint is US-only. Non-US markets (IN + AE for
+        # Ayurpet) get a text message pointing at the report_analyst fallback.
+        # We take that hint: call ask_report_analyst with a templated question
+        # so IN + AE still get actionable recommendations instead of a dead
+        # "not available" line.
         text_msg = recs.get("text") or ""
-        if text_msg and ("error" in text_msg.lower() or "not available" in text_msg.lower()):
-            lines.append(f"*Account recs:* not available for {country} market")
-            lines.append(f"  _{text_msg[:200]}_")
+        is_unsupported = bool(
+            text_msg
+            and ("not available" in text_msg.lower() or "error" in text_msg.lower())
+        )
+
+        if is_unsupported:
+            # Fallback: ask the analyst the same question Amazon's native
+            # endpoint would have answered.
+            try:
+                analyst = await ask_analyst(iid, aid, _ANALYST_FALLBACK_QUESTION)
+            except MapMcpError as e:
+                analyst = {"error": str(e)}
+
+            if analyst.get("_plan_gated"):
+                lines.append(f"*Recs (analyst fallback):* plan-gated — upgrade MAP to unlock")
+            elif "error" in analyst:
+                lines.append(f"*Recs (analyst fallback):* error — {analyst['error'][:120]}")
+            else:
+                # Analyst replies as either structured JSON or free-form text
+                # under the top-level `text` key. Treat as free-form for now —
+                # let the LLM-side formatting carry through.
+                answer = analyst.get("text") or analyst.get("answer") or str(analyst)
+                lines.append(f"*Recs* (via Amazon report analyst · {country}):")
+                # Truncate very long answers so the Telegram message stays
+                # readable; full content is still available via /amazon_recs
+                # follow-ups or MAP's web UI.
+                if len(answer) > 1500:
+                    answer = answer[:1500] + "\n…(truncated; drill-down via MAP UI)"
+                for line in answer.splitlines():
+                    if line.strip():
+                        lines.append(f"  {line}")
         else:
             items = (
                 recs.get("recommendations")
