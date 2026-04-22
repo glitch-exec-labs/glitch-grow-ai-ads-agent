@@ -52,6 +52,7 @@ from dataclasses import asdict
 
 from ads_agent.agent.llm import complete
 from ads_agent.agent.analysis.campaign_decomposer import CampaignHierarchy
+from ads_agent.playbook import node_brief
 
 log = logging.getLogger(__name__)
 
@@ -168,15 +169,34 @@ def _parse_markdown_report(text: str) -> dict:
 
 
 async def analyze_campaign(hierarchy: CampaignHierarchy,
+                           *,
+                           brand: str = "ayurpet",
                            model_tier: str = "smart") -> dict:
     """Run the methodology prompt against the decomposed campaign data.
+
+    Loads the methodology from the brand's playbook (Section X →
+    `amazon_recs` node brief). Falls back to the hardcoded
+    METHODOLOGY_PROMPT if the playbook lacks that brief — so this still
+    works on a fresh install before the private playbook package is set up.
 
     Returns {diagnosis, actions}. Markdown-based; tolerates LLM formatting
     quirks better than JSON.
     """
+    playbook_methodology = node_brief("amazon_recs", brand)
+    if playbook_methodology:
+        methodology = playbook_methodology + "\n\nThe campaign to analyze:"
+    else:
+        log.warning(
+            "playbook has no amazon_recs brief for brand %r — falling back "
+            "to hardcoded METHODOLOGY_PROMPT. Add the brief to "
+            "playbooks/<brand>.md Section X for brand-tuned analysis.",
+            brand,
+        )
+        methodology = METHODOLOGY_PROMPT
+
     payload = hierarchy.to_dict()
     data_block = json.dumps(payload, indent=2, default=str)
-    prompt = METHODOLOGY_PROMPT + "\n\n" + data_block
+    prompt = methodology + "\n\n" + data_block
 
     # max_tokens=12000 covers Gemini 2.5 Pro's hidden "thinking" budget
     # (often 4-8k tokens on multi-step reasoning) plus ~2-4k of actual
