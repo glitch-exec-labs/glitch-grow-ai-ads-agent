@@ -1,17 +1,26 @@
 """amazon_insights: Amazon Seller + Amazon Ads rollup for a store.
 
-Reads from `ads_agent.amazon_daily_v` — a Postgres view that normalises the
-Airbyte-written `airbyte_amazon.*` tables into our canonical shape. Sub-second.
+Mixed-source since 2026-04-22:
+  - Seller Central block → Airbyte warehouse (ads_agent.amazon_daily_v).
+    The SP-API connection is separate and syncs cleanly; leave it alone.
+  - Amazon Ads block → MAP (Marketplace Ad Pros MCP).
+    Airbyte's Amazon Ads EU connection has a ~56% data-loss bug (see
+    diagnostic notes in the Apr-22 chat transcript). MAP proxies Amazon's
+    Partner Network API directly and returns authoritative totals, fresh
+    within the hour. Plan-gated behind AI Connect ($10/wk).
+
+When MAP is unavailable (plan lapse, server down), we fall back to the
+Airbyte warehouse — same query path as before — so the node degrades
+gracefully but flags the output with a `(airbyte fallback — may be stale)`
+tag so downstream readers know to treat numbers as approximate.
 
 Architecture:
-  Amazon Seller Partner + Amazon Ads → Airbyte Cloud → SSH tunnel → our Postgres
-    → airbyte_amazon.Orders / sponsored_*_report_stream_daily
-    → ads_agent.amazon_daily_v (UNION + marketplace → store_slug mapping)
-    → THIS NODE
+  Amazon Seller Partner → Airbyte Cloud → Postgres → ads_agent.amazon_daily_v
+                                                       │
+                                                       ├── Seller block (THIS NODE)
+                                                       └── Ads fallback (THIS NODE)
 
-The OLD Supermetrics sync cron (glitch-amazon-sync.timer) is retired — it
-served as the bridge before Airbyte was wired. Supermetrics MCP tools in
-amazon-ads-mcp remain for ad-hoc Claude Code exploration only.
+  Amazon Ads API (via MAP's Partner creds) ── MAP MCP ── THIS NODE (primary)
 """
 from __future__ import annotations
 
@@ -19,7 +28,8 @@ import logging
 
 import asyncpg
 
-from ads_agent.config import get_store, settings
+from ads_agent.config import STORE_MAP_ACCOUNTS, get_store, settings
+from ads_agent.map.mcp_client import MapMcpError, ads_totals
 
 log = logging.getLogger(__name__)
 
@@ -90,42 +100,85 @@ async def amazon_insights_node(state: dict) -> dict:
             )
         lines.append("")
 
-    # ── Amazon Ads (Sponsored Products/Brands/Display) ────────────────────────
-    if ads_rows:
-        total_cost   = sum(float(r["cost"]   or 0) for r in ads_rows)
-        total_sales  = sum(float(r["sales"]  or 0) for r in ads_rows)
-        total_orders = sum(int  (r["orders"] or 0) for r in ads_rows)
-        family_roas = (total_sales / total_cost) if total_cost else 0
-        lines.append("*Amazon Ads (per report/market, top-spend first)*")
-        lines.append(
-            f"  total: spend {total_cost:,.2f} · sales {total_sales:,.2f} · "
-            f"ROAS {family_roas:.2f}x · orders {total_orders}"
-        )
-        for r in ads_rows:
-            cost  = float(r["cost"]  or 0)
-            sales = float(r["sales"] or 0)
-            if cost == 0 and (r["orders"] or 0) == 0:
-                continue
-            r_roas = (sales / cost) if cost else 0
+    # ── Amazon Ads — MAP (primary) with Airbyte fallback ──────────────────────
+    map_cfg = STORE_MAP_ACCOUNTS.get(slug)
+    used_source = "map"
+    ads_block_rendered = False
+
+    if map_cfg:
+        try:
+            t = await ads_totals(map_cfg["integration_id"], map_cfg["account_id"], days)
+        except MapMcpError as e:
+            log.warning("MAP ads_totals failed for %s: %s; falling back to Airbyte", slug, e)
+            t = None
+            used_source = "airbyte-fallback"
+        else:
+            if t.get("_plan_gated"):
+                log.warning("MAP plan-gated; falling back to Airbyte for %s ads block", slug)
+                t = None
+                used_source = "airbyte-fallback"
+
+        if t:
+            ccy = t.get("currency") or ""
+            cost, sales = t["cost"], t["sales14d"]
+            roas = (sales / cost) if cost else 0
             lines.append(
-                f"• {r['marketplace'] or r['account_id']} [{r['report_type']}]: "
-                f"spend {cost:,.2f} · sales {sales:,.2f} · ROAS {r_roas:.2f}x · "
-                f"orders {r['orders']}"
+                f"*Amazon Ads (via MAP · {map_cfg['country']} account · authoritative)*"
+            )
+            lines.append(
+                f"  spend {cost:,.2f} {ccy} · sales14d {sales:,.2f} {ccy} · "
+                f"ROAS {roas:.2f}x · purchases14d {t['purchases14d']} · "
+                f"clicks {t['clicks']:,} · imp {t['impressions']:,}"
+            )
+            lines.append(
+                f"  _for multi-market breakdown, use_ `/amazon_recs {slug}`"
+            )
+            lines.append("")
+            ads_block_rendered = True
+
+    if not ads_block_rendered:
+        # Airbyte fallback — same logic as before, but flagged as approximate
+        if ads_rows:
+            total_cost   = sum(float(r["cost"]   or 0) for r in ads_rows)
+            total_sales  = sum(float(r["sales"]  or 0) for r in ads_rows)
+            total_orders = sum(int  (r["orders"] or 0) for r in ads_rows)
+            family_roas = (total_sales / total_cost) if total_cost else 0
+            lines.append("*Amazon Ads (airbyte fallback — may be stale/partial)*")
+            lines.append(
+                f"  total: spend {total_cost:,.2f} · sales {total_sales:,.2f} · "
+                f"ROAS {family_roas:.2f}x · orders {total_orders}"
+            )
+            for r in ads_rows:
+                cost  = float(r["cost"]  or 0)
+                sales = float(r["sales"] or 0)
+                if cost == 0 and (r["orders"] or 0) == 0:
+                    continue
+                r_roas = (sales / cost) if cost else 0
+                lines.append(
+                    f"• {r['marketplace'] or r['account_id']} [{r['report_type']}]: "
+                    f"spend {cost:,.2f} · sales {sales:,.2f} · ROAS {r_roas:.2f}x · "
+                    f"orders {r['orders']}"
+                )
+        else:
+            lines.append("*Amazon Ads:* no data yet in the window")
+            lines.append(
+                "  — neither MAP nor Airbyte returned data. Check MAP plan status "
+                "or `airbyte_amazon.sponsored_*` tables."
             )
         lines.append("")
-    else:
-        lines.append("*Amazon Ads:* no data yet in the window")
-        lines.append(
-            "  — Airbyte ad report streams may still be backfilling, or the Ads "
-            "source config needs widening. Check `airbyte_amazon.sponsored_*` tables."
-        )
-        lines.append("")
 
-    # Cache freshness
+    # Source footer — be explicit about where each block came from
     last_synced = max((r["last_synced"] for r in rows if r["last_synced"]), default=None)
-    if last_synced:
+    footer_bits = []
+    if seller_rows and last_synced:
         from datetime import datetime, timezone
         age_h = (datetime.now(timezone.utc) - last_synced).total_seconds() / 3600
-        lines.append(f"_cache last synced: {age_h:.1f}h ago · source: Airbyte Cloud → Postgres_")
+        footer_bits.append(f"Seller: Airbyte ({age_h:.1f}h old)")
+    if used_source == "map":
+        footer_bits.append("Ads: MAP (≤1h old, authoritative)")
+    elif used_source == "airbyte-fallback":
+        footer_bits.append("Ads: Airbyte fallback (MAP unreachable — numbers may be ~50% low)")
+    if footer_bits:
+        lines.append("_" + " · ".join(footer_bits) + "_")
 
     return {**state, "reply_text": "\n".join(lines)}

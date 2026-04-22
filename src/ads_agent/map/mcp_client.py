@@ -181,6 +181,85 @@ async def budget_recs(integration_id: str, account_id: str) -> dict[str, Any]:
     return data if isinstance(data, dict) else {"raw": data}
 
 
+async def ads_totals(integration_id: str, account_id: str, days: int) -> dict[str, Any]:
+    """Sponsored-Products account totals over the last N days.
+
+    Returns:
+      {
+        "cost": float,             # Amazon Ads spend in account currency
+        "sales14d": float,         # 14-day attributed sales
+        "purchases14d": int,       # 14-day attributed purchases
+        "clicks": int,
+        "impressions": int,
+        "currency": str,           # inferred ISO code (INR, AED, ...)
+        "window_days": int,
+        "_source": "map",
+      }
+    Or {"_plan_gated": True} when the MAP plan is inactive.
+
+    Uses ask_report_analyst because it's what has authoritative totals
+    today. One query per call; 500/week quota = plenty for routine /amazon
+    use. The question is narrow so the analyst returns structured data
+    cheaply.
+    """
+    question = (
+        f"For the last {days} days, give the TOTAL Sponsored Products "
+        f"spend (cost), sales14d, purchases14d, clicks, and impressions "
+        f"across ALL campaigns for this account. Also return the currency "
+        f"code. Respond with compact structured data: one row, no prose."
+    )
+    data, gated = await call_tool(
+        "ask_report_analyst",
+        {
+            "integration_id": integration_id,
+            "account_id": account_id,
+            "question": question,
+        },
+        timeout_s=120.0,
+    )
+    if gated:
+        return {"_plan_gated": True}
+
+    # Analyst returns {data: [{...}], answer: "...", ...} — extract the row
+    rows = (data or {}).get("data") or []
+    row = rows[0] if rows else {}
+
+    def _f(*keys):
+        for k in keys:
+            v = row.get(k)
+            if v is not None:
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    pass
+        return 0.0
+
+    def _i(*keys):
+        v = _f(*keys)
+        return int(round(v))
+
+    # Currency: the analyst usually includes 'currency' or 'currencyCode'
+    # in the row. Fall back to parsing from the natural-language answer.
+    ccy = row.get("currency") or row.get("currencyCode") or ""
+    if not ccy and data.get("answer"):
+        # crude fallback — look for a 3-letter ISO in the analyst's answer
+        import re
+        m = re.search(r"\b(INR|AED|USD|GBP|EUR|CAD|AUD|JPY|MXN)\b", str(data["answer"]))
+        if m:
+            ccy = m.group(1)
+
+    return {
+        "cost": _f("cost", "total_cost", "spend", "amount_spent"),
+        "sales14d": _f("sales14d", "total_sales14d", "sales_14d"),
+        "purchases14d": _i("purchases14d", "total_purchases14d", "purchases_14d"),
+        "clicks": _i("clicks", "total_clicks"),
+        "impressions": _i("impressions", "total_impressions"),
+        "currency": ccy,
+        "window_days": days,
+        "_source": "map",
+    }
+
+
 async def ask_analyst(integration_id: str, account_id: str, question: str) -> dict[str, Any]:
     """LLM-over-warehouse natural-language query. MAP's killer feature and
     our fallback when account_recs isn't available for a marketplace.
