@@ -13,7 +13,23 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-22
 
-- **00:00 UTC** — auto-sync: 2026-04-22 00:00 UTC (`4a282f5`) — 1 file
+- **00:45 UTC** — auto-sync: 2026-04-22 00:45 UTC (`c689039`) — 4 files
+        A	src/ads_agent/agent/nodes/amazon_recs.py
+        M	src/ads_agent/config.py
+        A	src/ads_agent/map/__init__.py
+        A	src/ads_agent/map/mcp_client.py
+- **00:39 UTC** — feat(ga4): wire first-party GA4 attribution into roas_compute (`0baa52d`) — 5 files
+    New ads_agent.ga4.client exposes a thin async wrapper over the GA4 Data
+    API (run_report in a thread-pool) returning headline purchase metrics for
+    a store over the last N days: revenue, currency, purchases, sessions,
+    converted_sessions.
+    roas_compute_node now surfaces a third GA4 ROAS line alongside Shopify
+    pipeline / paid-only / Meta-reported. For stores not in
+    STORE_GA4_STREAMS_JSON the GA4 block is silently skipped, so Urban
+    family + Mokshya see no behavior change.
+    Config additions:
+      - ga4_service_account_json_path — points at the shared Vertex SA JSON
+- **00:00 UTC** — auto-sync: 2026-04-22 00:00 UTC (`ab7a753`) — 2 files
         D	.claude/scheduled_tasks.lock
 
 ## 2026-04-21

@@ -163,6 +163,48 @@ def _load_store_ga4_streams() -> dict[str, dict[str, str]]:
 STORE_GA4_STREAMS: dict[str, dict[str, str]] = _load_store_ga4_streams()
 
 
+# ---------------------------------------------------------------------------
+# Marketplace Ad Pros mapping — store slug → MAP integration + account + country.
+#
+# Shape of STORE_MAP_ACCOUNTS_JSON env var:
+#   {
+#     "ayurpet-ind":    {"integration_id": "<uuid>", "account_id": "<uuid>", "country": "IN"},
+#     "ayurpet-global": {"integration_id": "<uuid>", "account_id": "<uuid>", "country": "AE"}
+#   }
+#
+# Only primary-market mapping today. Multi-market stores (ayurpet-global
+# covers AE + UK + IE + ES + PL) pick the dominant ad-spend market as
+# primary; other markets can be queried via /amazon_recs <slug> <country>
+# with an explicit country override.
+# ---------------------------------------------------------------------------
+
+
+def _load_store_map_accounts() -> dict[str, dict[str, str]]:
+    raw = os.environ.get("STORE_MAP_ACCOUNTS_JSON", "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError, ValueError) as ex:
+        log.warning("STORE_MAP_ACCOUNTS_JSON invalid, returning empty map: %s", ex)
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    for slug, cfg in parsed.items():
+        if not isinstance(cfg, dict):
+            continue
+        iid = str(cfg.get("integration_id") or "").strip()
+        aid = str(cfg.get("account_id") or "").strip()
+        country = str(cfg.get("country") or "").strip().upper()
+        if not iid or not aid:
+            log.warning("STORE_MAP_ACCOUNTS_JSON[%s] missing integration_id or account_id", slug)
+            continue
+        out[slug] = {"integration_id": iid, "account_id": aid, "country": country}
+    return out
+
+
+STORE_MAP_ACCOUNTS: dict[str, dict[str, str]] = _load_store_map_accounts()
+
+
 # Scopes we need above the existing write_orders baseline to do analytics reads.
 # Apply these by bumping *_SCOPES csv in /home/support/multi-store-theme-manager/.env
 # then forcing merchant re-auth.
@@ -235,6 +277,12 @@ class Settings(BaseSettings):
     # Viewer role on the relevant GA4 properties. Blank → GA4 nodes skip
     # silently, which is the right behavior for brands that aren't wired in.
     ga4_service_account_json_path: str = ""
+
+    # Marketplace Ad Pros — remote Amazon Ads + SP-API MCP at
+    # https://app.marketplaceadpros.com/mcp. Bearer-auth via a static API key
+    # minted in their dashboard. Free tier gives list_brands + list_resources;
+    # $10/wk AI Connect unlocks ask_report_analyst + Amazon's rec endpoints.
+    map_api_key: str = ""
 
     # Runtime
     public_base_url: str = "https://ads.yourdomain.com"
