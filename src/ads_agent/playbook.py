@@ -26,13 +26,33 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-PLAYBOOK_DIR = Path(__file__).resolve().parent.parent.parent / "playbooks"
+_PUBLIC_PLAYBOOK_DIR = Path(__file__).resolve().parent.parent.parent / "playbooks"
+
+try:
+    import glitch_grow_ads_playbook as _priv  # type: ignore[import-not-found]
+    _PRIVATE_PLAYBOOK_DIR: Path | None = Path(_priv.__file__).resolve().parent / "playbooks"
+except ImportError:
+    _PRIVATE_PLAYBOOK_DIR = None
+
+
+def _resolve(brand: str) -> Path:
+    """Prefer the installed private playbook package, fall back to the
+    public repo's demo playbooks dir. Real per-brand strategy lives in
+    the private package to keep forks a step behind."""
+    if _PRIVATE_PLAYBOOK_DIR is not None:
+        candidate = _PRIVATE_PLAYBOOK_DIR / f"{brand}.md"
+        if candidate.exists():
+            return candidate
+    return _PUBLIC_PLAYBOOK_DIR / f"{brand}.md"
+
+
+PLAYBOOK_DIR = _PRIVATE_PLAYBOOK_DIR or _PUBLIC_PLAYBOOK_DIR
 
 
 @lru_cache(maxsize=8)
 def load_raw(brand: str = "ayurpet") -> str:
     """Return the raw markdown of a brand's playbook."""
-    path = PLAYBOOK_DIR / f"{brand}.md"
+    path = _resolve(brand)
     if not path.exists():
         log.warning("no playbook found for brand %r at %s", brand, path)
         return ""

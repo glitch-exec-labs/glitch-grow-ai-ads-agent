@@ -1,3 +1,8 @@
+# Per-brand playbooks — real tuning lives in the private playbook package.
+# Only demo.md (generic placeholder) is tracked in the public repo.
+playbooks/*.md
+!playbooks/demo.md
+
 # Environments / secrets
 .env
 .env.*
