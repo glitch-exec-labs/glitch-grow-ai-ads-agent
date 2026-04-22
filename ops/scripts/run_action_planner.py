@@ -25,7 +25,7 @@ load_dotenv()
 import asyncpg
 
 from ads_agent.actions.models import AYURPET_CHAT_ID
-from ads_agent.actions.planner import plan_for_store
+from ads_agent.actions.planner import plan_amazon_for_store, plan_for_store
 
 log = logging.getLogger("action_planner")
 
@@ -62,8 +62,11 @@ async def main() -> None:
             if args.dry_run:
                 log.info("[DRY-RUN] would plan %s → chat %s", slug, chat)
                 continue
-            n = await plan_for_store(pool, slug, chat)
-            log.info("planned %s: %d proposals posted", slug, n)
+            n_meta = await plan_for_store(pool, slug, chat)
+            log.info("planned %s Meta: %d proposals posted", slug, n_meta)
+            # Amazon planner is env-gated; returns 0 silently if AMAZON_PLANNER_ENABLED != '1'
+            n_amz = await plan_amazon_for_store(pool, slug, chat)
+            log.info("planned %s Amazon: %d proposals posted", slug, n_amz)
     finally:
         await pool.close()
 

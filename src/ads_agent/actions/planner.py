@@ -1,4 +1,4 @@
-"""Planner — scans live Meta data and emits ActionProposals.
+"""Planner — scans live Meta + Amazon data and emits ActionProposals.
 
 Runs every 4 hours. For each enabled store:
   1. Fetch active adsets + spend + purchase_roas (last 14d) from Meta Graph API.
@@ -9,6 +9,13 @@ Runs every 4 hours. For each enabled store:
      from dedup so a Telegram outage or TTL can't black-hole a target.
   4. Persist survivors as pending_approval rows via notifier.post_proposal —
      notifier then sends the Telegram approval prompt.
+
+v2 (2026-04-22): added `plan_amazon_for_store` which asks MAP's
+ask_report_analyst for 5 wasteful-spend targets per store, parses the
+structured response, and emits `amazon_pause_ad` / `amazon_add_negative_keyword`
+proposals on the same HITL approval path. Gated by AMAZON_PLANNER_ENABLED
+env var so the systemd cron doesn't auto-run Amazon until operator flips
+it on — keeps v2 safe behind a manual trigger while the pattern settles.
 
 ## Public engine / private playbook split
 
@@ -37,6 +44,8 @@ import httpx
 
 from ads_agent.actions.models import ActionProposal, AYURPET_CHAT_ID
 from ads_agent.actions.notifier import TelegramNotifyError, post_proposal
+from ads_agent.config import STORE_MAP_ACCOUNTS
+from ads_agent.map.mcp_client import MapMcpError, ask_analyst, call_tool as map_call
 
 log = logging.getLogger(__name__)
 
@@ -163,6 +172,286 @@ async def _recent_targets(pool: asyncpg.Pool, hours: int = DEDUP_HOURS) -> set[s
             str(hours),
         )
     return {r["target_object_id"] for r in rows}
+
+
+# ---------------------------------------------------------------------------
+# Amazon planner — MAP analyst → structured proposals
+# ---------------------------------------------------------------------------
+
+# Structured prompt asks for rows we can parse into ActionProposal inputs.
+# Kept narrow so we don't burn analyst quota. 5 items max keeps the Telegram
+# posting volume reasonable for a single run.
+_AMAZON_PLAN_PROMPT = (
+    "For the last 14 days on this Sponsored Products account, return up to 5 "
+    "of the HIGHEST-IMPACT waste-reduction actions. For each action return a "
+    "structured row with exactly these columns: "
+    "action_type (one of: pause_ad, add_negative_keyword), "
+    "campaign_name, campaign_id, ad_group_name, ad_group_id, "
+    "ad_id (only for pause_ad; null otherwise), "
+    "asin (only for pause_ad; null otherwise), "
+    "keyword_text (only for add_negative_keyword; null otherwise), "
+    "match_type (one of: NEGATIVE_EXACT, NEGATIVE_PHRASE; null for pause_ad), "
+    "cost_14d (number, native currency), purchases_14d (integer), "
+    "clicks_14d (integer), est_weekly_savings (number). "
+    "Only include actions where cost_14d > 50 AND purchases_14d = 0 over the "
+    "window. Sort by est_weekly_savings descending. No prose, just rows."
+)
+
+
+def _amazon_rows_from_analyst(analyst_data: dict) -> list[dict]:
+    """Extract the structured rows the analyst returned + infer action_type
+    if missing.
+
+    MAP's `ask_report_analyst` doesn't always honor the "action_type" column
+    in the prompt — often it just returns the raw waste-performance rows.
+    We infer the right action from the row's shape:
+
+      - has `ad_id` or `asin` (but no keyword_text) → pause_ad
+      - has `keyword_text` with a regular match_type (EXACT/PHRASE/BROAD)
+          → add_negative_keyword  (we'll add it as NEGATIVE_EXACT by default)
+      - has `match_type = TARGETING_EXPRESSION` (product/category target)
+          → skip for v1; needs a separate pause_target action_kind we
+          haven't built yet
+      - has explicit `action_type = pause_ad | add_negative_keyword` → trust it
+    """
+    if not isinstance(analyst_data, dict):
+        return []
+    rows = analyst_data.get("data") or []
+    if not isinstance(rows, list):
+        return []
+
+    cleaned: list[dict] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+
+        # Skip product-targeting rows — out of v1 scope
+        mt = (r.get("match_type") or "").upper()
+        if mt == "TARGETING_EXPRESSION":
+            continue
+        kw = (r.get("keyword_text") or "").strip()
+        if kw.startswith("asin-expanded="):
+            continue
+
+        explicit = (r.get("action_type") or "").strip().lower()
+        if explicit in ("pause_ad", "add_negative_keyword"):
+            at = explicit
+        elif kw and mt in ("EXACT", "PHRASE", "BROAD", "NEGATIVE_EXACT", "NEGATIVE_PHRASE"):
+            # Keyword row → add negative. Force match_type to NEGATIVE_EXACT
+            # unless the analyst explicitly said NEGATIVE_PHRASE.
+            at = "add_negative_keyword"
+            if mt != "NEGATIVE_PHRASE":
+                r["match_type"] = "NEGATIVE_EXACT"
+        elif r.get("ad_id") or r.get("adId") or r.get("asin"):
+            at = "pause_ad"
+        else:
+            continue
+
+        # Populate the inferred action_type so downstream can rely on it
+        r = {**r, "action_type": at}
+
+        # Per-type field sanity
+        # pause_ad: require either ad_id (direct target) OR (ad_group_id + asin)
+        # so we can hydrate ad_id from MAP before converting to proposal.
+        if at == "pause_ad":
+            has_direct = bool(r.get("ad_id") or r.get("adId"))
+            has_lookup = bool(
+                (r.get("ad_group_id") or r.get("adGroupId"))
+                and r.get("asin")
+            )
+            if not (has_direct or has_lookup):
+                continue
+        if at == "add_negative_keyword" and not r.get("keyword_text"):
+            continue
+        cleaned.append(r)
+
+    return cleaned
+
+
+def _proposal_from_amazon_row(
+    *, store_slug: str, row: dict, integration_id: str, account_id: str
+) -> ActionProposal | None:
+    """Convert one analyst row into an ActionProposal. Returns None if the
+    row is missing required fields for its action_type."""
+    at = (row.get("action_type") or "").strip().lower()
+    campaign_name = row.get("campaign_name") or row.get("campaignName") or "?"
+    ad_group_name = row.get("ad_group_name") or row.get("adGroupName") or "?"
+    cost = float(row.get("cost_14d") or 0)
+    purch = int(row.get("purchases_14d") or 0)
+    clicks = int(row.get("clicks_14d") or 0)
+    savings = float(row.get("est_weekly_savings") or 0)
+
+    evidence = {
+        "cost_14d": round(cost, 2),
+        "purchases_14d": purch,
+        "clicks_14d": clicks,
+        "campaign": campaign_name,
+        "ad_group": ad_group_name,
+    }
+    expected_impact = {"estimated_weekly_savings": round(savings, 2)}
+
+    if at == "pause_ad":
+        ad_id = str(row.get("ad_id") or row.get("adId") or "")
+        asin = row.get("asin") or row.get("advertisedAsin") or "?"
+        if not ad_id:
+            return None
+        return ActionProposal(
+            store_slug=store_slug,
+            action_kind="amazon_pause_ad",
+            target_object_id=ad_id,
+            target_object_name=f"{asin} in {campaign_name} / {ad_group_name}",
+            rationale=(
+                f"ASIN {asin} in {campaign_name} / {ad_group_name} has spent "
+                f"{cost:,.2f} over the last 14 days with {purch} purchases "
+                f"({clicks} clicks). Pausing this ad reclaims "
+                f"~{savings:,.2f}/week with no revenue loss."
+            ),
+            params={
+                "integration_id": integration_id,
+                "account_id": account_id,
+                "asin": asin,
+                "campaign_id": row.get("campaign_id") or row.get("campaignId"),
+                "ad_group_id": row.get("ad_group_id") or row.get("adGroupId"),
+            },
+            evidence=evidence,
+            expected_impact=expected_impact,
+        )
+
+    if at == "add_negative_keyword":
+        ag_id = str(row.get("ad_group_id") or row.get("adGroupId") or "")
+        kw = row.get("keyword_text") or ""
+        mt = (row.get("match_type") or "NEGATIVE_EXACT").upper()
+        if mt not in ("NEGATIVE_EXACT", "NEGATIVE_PHRASE"):
+            mt = "NEGATIVE_EXACT"
+        if not ag_id or not kw:
+            return None
+        return ActionProposal(
+            store_slug=store_slug,
+            action_kind="amazon_add_negative_keyword",
+            target_object_id=ag_id,
+            target_object_name=f"{kw!r} on {campaign_name} / {ad_group_name}",
+            rationale=(
+                f"Search term {kw!r} in {campaign_name} / {ad_group_name} "
+                f"has spent {cost:,.2f} over 14 days with {purch} purchases "
+                f"({clicks} clicks). Adding as {mt} prevents future spend on "
+                f"this term. Estimated reclaim ~{savings:,.2f}/week."
+            ),
+            params={
+                "integration_id": integration_id,
+                "account_id": account_id,
+                "campaign_id": row.get("campaign_id") or row.get("campaignId"),
+                "adGroupId": ag_id,
+                "keyword_text": kw,
+                "match_type": mt,
+            },
+            evidence=evidence,
+            expected_impact=expected_impact,
+        )
+    return None
+
+
+async def plan_amazon_for_store(
+    pool: asyncpg.Pool, store_slug: str, chat_id: int, *, force: bool = False,
+) -> int:
+    """Ask MAP's analyst for waste-reduction opportunities, convert each into
+    an ActionProposal, dedup, and post for Approve/Reject. Returns count posted.
+
+    Gated by AMAZON_PLANNER_ENABLED env var — set to '1' to enable for
+    automated cron runs. `force=True` bypasses the env gate (used by the
+    manual `/scan_amazon <store>` Telegram command) so the operator can
+    always manually trigger a scan while keeping the cron off.
+    """
+    if not force and os.environ.get("AMAZON_PLANNER_ENABLED", "").strip() != "1":
+        log.info(
+            "Amazon planner disabled (AMAZON_PLANNER_ENABLED != '1') — "
+            "skipping store %s", store_slug,
+        )
+        return 0
+
+    cfg = STORE_MAP_ACCOUNTS.get(store_slug)
+    if not cfg:
+        log.info("no MAP mapping for %s — skipping Amazon plan", store_slug)
+        return 0
+
+    try:
+        data = await ask_analyst(cfg["integration_id"], cfg["account_id"], _AMAZON_PLAN_PROMPT)
+    except MapMcpError as e:
+        log.warning("ask_analyst failed for %s: %s", store_slug, e)
+        return 0
+
+    if data.get("_plan_gated"):
+        log.warning("MAP plan inactive — Amazon plan for %s skipped", store_slug)
+        return 0
+
+    rows = _amazon_rows_from_analyst(data)
+    if not rows:
+        log.info("MAP analyst returned 0 actionable rows for %s", store_slug)
+        return 0
+
+    # Analyst usually returns ASIN + ad_group_id for pause_ad rows but NOT
+    # ad_id. Look up ad_ids per-campaign via list_resources. MAP requires a
+    # campaign_id filter on sp_product_ads, so we loop by distinct campaign.
+    # Cache per-campaign results within this run.
+    ad_lookup: dict[tuple[str, str], str] = {}  # (adGroupId, asin) → adId
+    campaign_cache: set[str] = set()
+
+    async def _hydrate_campaign(campaign_id: str) -> None:
+        """One-shot fetch of all enabled product ads in a campaign."""
+        if campaign_id in campaign_cache or not campaign_id:
+            return
+        campaign_cache.add(campaign_id)
+        try:
+            data_ads, gated = await map_call("list_resources", {
+                "integration_id": cfg["integration_id"],
+                "account_id":     cfg["account_id"],
+                "resource_type":  "sp_product_ads",
+                # MAP requires filters nested under "filters", not top-level
+                "filters": {
+                    "campaign_id":  campaign_id,
+                    "state_filter": "ENABLED",
+                },
+            })
+            if gated or not isinstance(data_ads, dict):
+                return
+            for item in data_ads.get("items", []):
+                key = (str(item.get("adGroupId")), str(item.get("asin") or ""))
+                ad_lookup[key] = str(item.get("adId"))
+        except MapMcpError as e:
+            log.warning("product-ads lookup failed for campaign %s: %s", campaign_id, e)
+
+    # Resolve ad_id for each pause_ad row that doesn't already have one
+    for r in rows:
+        if r.get("action_type") == "pause_ad" and not (r.get("ad_id") or r.get("adId")):
+            cid = str(r.get("campaign_id") or r.get("campaignId") or "")
+            await _hydrate_campaign(cid)
+            key = (str(r.get("ad_group_id") or r.get("adGroupId")), str(r.get("asin") or ""))
+            adid = ad_lookup.get(key)
+            if adid:
+                r["ad_id"] = adid
+
+    recent = await _recent_targets(pool)
+    posted = 0
+    for row in rows:
+        prop = _proposal_from_amazon_row(
+            store_slug=store_slug, row=row,
+            integration_id=cfg["integration_id"], account_id=cfg["account_id"],
+        )
+        if prop is None:
+            continue
+        if prop.target_object_id in recent:
+            continue  # dedup against recent actions on the same target
+        try:
+            await post_proposal(pool, prop, chat_id)
+            posted += 1
+            recent.add(prop.target_object_id)
+        except TelegramNotifyError as e:
+            log.warning(
+                "notify failed for Amazon target %s (will retry next tick): %s",
+                prop.target_object_id, e,
+            )
+        except Exception:
+            log.exception("post_proposal failed for Amazon target %s", prop.target_object_id)
+    return posted
 
 
 async def plan_for_store(pool: asyncpg.Pool, store_slug: str, chat_id: int) -> int:

@@ -137,6 +137,61 @@ async def cmd_amazon_recs(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
     await _run_and_reply(update, "amazon_recs", 30, ctx.args or [])
 
 
+async def cmd_scan_amazon(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Manually trigger the Amazon planner for a store. Unlike the cron,
+    this bypasses the AMAZON_PLANNER_ENABLED env gate — it's explicitly
+    operator-triggered, not automatic.
+
+    Creates up to 5 action proposals (pause_ad / add_negative_keyword) in
+    ads_agent.agent_actions with status=pending_approval, and posts each
+    to this chat with Approve/Reject inline buttons. Nothing mutates any
+    Amazon account until the operator clicks Approve on a specific row.
+
+    Usage: /scan_amazon <store_slug>
+    """
+    if not is_admin(update):
+        return
+    import asyncpg
+    import os as _os
+    from ads_agent.actions.models import AYURPET_CHAT_ID
+    from ads_agent.actions.planner import plan_amazon_for_store
+
+    args = ctx.args or []
+    if not args:
+        await update.message.reply_text(
+            "usage: /scan_amazon <store_slug>  (e.g. /scan_amazon ayurpet-ind)"
+        )
+        return
+    slug = args[0]
+    if get_store(slug) is None:
+        await update.message.reply_text(
+            f"Unknown store `{slug}`. /stores for list.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    # Same chat used for Meta approvals — keep ops in one thread
+    chat_id = update.effective_chat.id if update.effective_chat else AYURPET_CHAT_ID
+    status_msg = await update.message.reply_text(
+        f"Scanning {slug} via MAP analyst for waste-reduction actions…"
+    )
+    dsn = _os.environ.get("POSTGRES_RW_URL") or _os.environ["POSTGRES_INSIGHTS_RO_URL"]
+    pool = await asyncpg.create_pool(dsn, min_size=1, max_size=2, command_timeout=180.0)
+    try:
+        n = await plan_amazon_for_store(pool, slug, chat_id, force=True)
+    finally:
+        await pool.close()
+    try:
+        await status_msg.edit_text(
+            f"*{slug} Amazon scan complete* — {n} proposal(s) posted.\n"
+            f"_Each proposal is pending_approval; click Approve on any to "
+            f"execute via MAP. Nothing will mutate automatically._",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except Exception:
+        await status_msg.edit_text(f"{slug} scan done — {n} proposals posted.")
+
+
 async def cmd_attribution(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update):
         return
