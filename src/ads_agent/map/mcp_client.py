@@ -179,3 +179,31 @@ async def budget_recs(integration_id: str, account_id: str) -> dict[str, Any]:
     if gated:
         return {"_plan_gated": True}
     return data if isinstance(data, dict) else {"raw": data}
+
+
+async def ask_analyst(integration_id: str, account_id: str, question: str) -> dict[str, Any]:
+    """LLM-over-warehouse natural-language query. MAP's killer feature and
+    our fallback when account_recs isn't available for a marketplace.
+
+    `question` should be specific about window, metrics, limits. See MAP's
+    skill-amazon-ads SKILL.md for phrasing guidelines — the analyst works
+    better with 'last 14 days, top 5, sort by cost desc' than with 'how
+    are my ads doing'.
+
+    Paid tool — AI Connect plan required. Returns {_plan_gated: True} if
+    the user's MAP plan has lapsed so callers can degrade gracefully.
+    Default timeout is 3 min because the analyst may do multi-step
+    reasoning over the warehouse.
+    """
+    data, gated = await call_tool(
+        "ask_report_analyst",
+        {
+            "integration_id": integration_id,
+            "account_id": account_id,
+            "question": question,
+        },
+        timeout_s=180.0,
+    )
+    if gated:
+        return {"_plan_gated": True}
+    return data if isinstance(data, dict) else {"raw": data}
