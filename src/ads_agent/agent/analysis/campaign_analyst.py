@@ -178,9 +178,14 @@ async def analyze_campaign(hierarchy: CampaignHierarchy,
     data_block = json.dumps(payload, indent=2, default=str)
     prompt = METHODOLOGY_PROMPT + "\n\n" + data_block
 
+    # max_tokens=12000 covers Gemini 2.5 Pro's hidden "thinking" budget
+    # (often 4-8k tokens on multi-step reasoning) plus ~2-4k of actual
+    # markdown output. Undersizing this is what cut diagnosis off at
+    # sentence 3 in v1 of this function.
     raw = await complete(
-        prompt, tier=model_tier, max_tokens=4000,
+        prompt, tier=model_tier, max_tokens=12000,
         system=("You are a senior PPC strategist. Output ONLY the markdown "
-                "report as specified — no preamble, no JSON, no code fences."),
+                "report as specified — no preamble, no JSON, no code fences. "
+                "Keep prose tight; save tokens for the ACTIONS section."),
     )
     return _parse_markdown_report(raw)
