@@ -256,49 +256,94 @@ async def _metrics_per_child(integration_id: str, account_id: str,
     return kw_rows, ad_rows
 
 
-def _build_children_from_rows(
-    rows: list[dict], ag_index: dict[str, AdGroup],
-) -> list[Child]:
-    """Turn analyst rows into typed Child objects + attach to ad groups."""
-    out: list[Child] = []
-    for r in rows:
-        kw   = (r.get("keyword_text") or r.get("keyword") or "").strip()
-        mt   = (r.get("match_type") or "").strip()
-        expr = (r.get("targeting_expression") or r.get("target_expression") or "").strip()
-        asin = (r.get("asin") or r.get("advertised_asin") or "").strip()
+def _extract_metric(r: dict, *keys, default=0.0):
+    """Tolerate the analyst's varying column-name conventions.
+    It sometimes returns 'cost', sometimes 'SUM(cost)', sometimes 'total_cost'.
+    Same pattern on other metric columns."""
+    for k in keys:
+        v = r.get(k)
+        if v is None: continue
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            continue
+    return default
 
-        # Decide which kind of child this row represents
-        if kw and mt and not mt.upper().startswith("TARGETING"):
-            kind, label, mt_out = "keyword", kw, mt.upper()
-        elif expr or (mt and mt.upper().startswith("TARGETING")):
-            kind, label, mt_out = "product_target", (expr or kw or "(expression)"), mt.upper()
-        elif asin:
-            kind, label, mt_out = "product_ad", asin, None
-        else:
-            continue  # junk row
+
+def _build_children_from_rows(
+    kw_rows: list[dict],
+    ad_rows: list[dict],
+    ag_index: dict[str, AdGroup],
+) -> list[Child]:
+    """Turn aggregated analyst rows into typed Child objects + attach to ad groups.
+
+    Note the analyst's column names use camelCase per Amazon Ads API
+    (keyword, matchType, adGroupId, etc.) — NOT our preferred snake_case.
+    """
+    out: list[Child] = []
+
+    # --- keywords + product targets
+    for r in kw_rows:
+        label = (r.get("keyword") or r.get("keywordText") or r.get("targeting") or "").strip()
+        mt    = (r.get("matchType") or r.get("keywordType") or "").strip().upper()
+        if not label:
+            continue
+
+        is_target = (mt.startswith("TARGETING") or label.startswith("asin-expanded=")
+                     or label.startswith("asin=") or label.startswith("keyword-group="))
+        kind = "product_target" if is_target else "keyword"
 
         m = Metrics14d(
-            cost         = float(r.get("cost") or 0),
-            sales14d     = float(r.get("sales14d") or r.get("sales") or 0),
-            purchases14d = int(float(r.get("purchases14d") or r.get("purchases") or 0)),
-            clicks       = int(float(r.get("clicks") or 0)),
-            impressions  = int(float(r.get("impressions") or 0)),
+            cost         = _extract_metric(r, "sum_cost", "cost", "SUM(cost)", "total_cost"),
+            sales14d     = _extract_metric(r, "sum_sales14d", "sales14d", "SUM(sales14d)", "total_sales14d"),
+            purchases14d = int(_extract_metric(r, "sum_purchases14d", "purchases14d", "SUM(purchases14d)", "total_purchases14d")),
+            clicks       = int(_extract_metric(r, "sum_clicks", "clicks", "SUM(clicks)", "total_clicks")),
+            impressions  = int(_extract_metric(r, "sum_impressions", "impressions", "SUM(impressions)", "total_impressions")),
         )
-        ag_id   = str(r.get("ad_group_id") or "")
-        ag_name = (r.get("ad_group_name") or "").strip()
-        bid     = float(r["bid"]) if r.get("bid") not in (None, "") else None
+        ag_id   = str(r.get("adGroupId") or r.get("ad_group_id") or "")
+        ag_name = (r.get("adGroupName") or r.get("ad_group_name") or "").strip()
+        bid_raw = r.get("keywordBid") or r.get("bid")
+        bid     = float(bid_raw) if bid_raw not in (None, "") else None
 
         child = Child(
-            kind=kind, id=str(r.get("keyword_id") or r.get("target_id") or r.get("ad_id") or label),
-            label=label, match_type=mt_out,
-            state=(r.get("state") or "enabled"),
+            kind=kind,
+            id=str(r.get("keywordId") or r.get("targetId") or label),
+            label=label, match_type=mt,
+            state=(r.get("state") or r.get("keywordStatus") or "enabled").lower(),
             bid=bid,
             ad_group_id=ag_id, ad_group_name=ag_name,
             metrics=m,
         )
         out.append(child)
+        if ag_id and ag_id in ag_index:
+            ag_index[ag_id].children.append(child)
 
-        # Attach to its ad group if we have the index
+    # --- product ads
+    for r in ad_rows:
+        asin = (r.get("advertisedAsin") or r.get("asin") or "").strip()
+        if not asin:
+            continue
+
+        m = Metrics14d(
+            cost         = _extract_metric(r, "sum_cost", "cost", "SUM(cost)", "total_cost"),
+            sales14d     = _extract_metric(r, "sum_sales14d", "sales14d", "SUM(sales14d)", "total_sales14d"),
+            purchases14d = int(_extract_metric(r, "sum_purchases14d", "purchases14d", "SUM(purchases14d)", "total_purchases14d")),
+            clicks       = int(_extract_metric(r, "sum_clicks", "clicks", "SUM(clicks)", "total_clicks")),
+            impressions  = int(_extract_metric(r, "sum_impressions", "impressions", "SUM(impressions)", "total_impressions")),
+        )
+        ag_id   = str(r.get("adGroupId") or "")
+        ag_name = (r.get("adGroupName") or "").strip()
+
+        child = Child(
+            kind="product_ad",
+            id=str(r.get("adId") or asin),
+            label=asin, match_type=None,
+            state=(r.get("state") or "enabled").lower(),
+            bid=None,
+            ad_group_id=ag_id, ad_group_name=ag_name,
+            metrics=m,
+        )
+        out.append(child)
         if ag_id and ag_id in ag_index:
             ag_index[ag_id].children.append(child)
 
@@ -427,16 +472,13 @@ async def decompose_sp_campaign(
     ]
     ag_index = {ag.id: ag for ag in ad_groups}
 
-    # 3. Per-child metrics via analyst
-    rows = await _metrics_per_child(integration_id, account_id, campaign_id, days)
+    # 3. Per-child metrics via analyst — keywords + product ads separately
+    kw_rows, ad_rows = await _metrics_per_child(integration_id, account_id, campaign_id, days)
 
-    # If analyst didn't give us rows, we still return a valid hierarchy
-    # (structure without metrics) so the caller sees empty metrics rather
-    # than a crash.
-    if not rows:
+    if not kw_rows and not ad_rows:
         log.warning("campaign %s has no child metrics from analyst", campaign_id)
 
-    children = _build_children_from_rows(rows, ag_index)
+    children = _build_children_from_rows(kw_rows, ad_rows, ag_index)
 
     # Derive campaign-level metrics by summing children
     cm = Metrics14d()
