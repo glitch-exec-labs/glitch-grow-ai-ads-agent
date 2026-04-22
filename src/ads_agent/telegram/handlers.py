@@ -128,6 +128,15 @@ async def cmd_amazon(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await _run_and_reply(update, "amazon", 30, ctx.args or [])
 
 
+async def cmd_amazon_recs(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Amazon's own recommendations via MAP. Complements /amazon (Airbyte warehouse)."""
+    if not is_admin(update):
+        return
+    # days arg is currently unused by amazon_recs_node (recs are always "today"
+    # from Amazon's perspective) but pass 30 for consistency + future-proofing.
+    await _run_and_reply(update, "amazon_recs", 30, ctx.args or [])
+
+
 async def cmd_attribution(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update):
         return
