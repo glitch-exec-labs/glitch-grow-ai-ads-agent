@@ -89,7 +89,32 @@ async def post_proposal(
 
     We still keep the failed row in the table for audit / debugging rather
     than deleting it.
+
+    Pre-write guardrail (2026-04-22): before inserting any row, we check
+    that the proposed action is actually applicable — e.g. a pause
+    proposal is rejected if the target is already paused. See
+    `ads_agent.actions.guardrails`. Failures raise `GuardrailViolation`
+    (a subclass of `TelegramNotifyError` is NOT used — the caller should
+    catch `GuardrailViolation` separately and skip, not retry).
     """
+    # 0) Guardrail: reject no-op pauses before any DB/Telegram work.
+    fetcher_entry = _PAUSE_STATUS_FETCHERS.get(prop.action_kind)
+    if fetcher_entry and fetcher_entry[1] is not None:
+        platform, fetcher = fetcher_entry
+        try:
+            await assert_pause_applicable(
+                platform, target_id=prop.target_object_id,
+                fetch_effective_status=fetcher,
+                target_name=prop.target_object_name,
+            )
+        except GuardrailViolation as e:
+            # Re-raise so the planner can log + skip. Intentionally NOT wrapped
+            # in TelegramNotifyError so planner's retry-on-notify-failure path
+            # doesn't retry these — they're structural rejections, not transient.
+            log.info("guardrail rejected proposal for %s: %s",
+                     prop.target_object_id, e)
+            raise
+
     # 1) Insert (status defaults to pending_approval)
     async with pool.acquire() as conn:
         action_id = await conn.fetchval(
