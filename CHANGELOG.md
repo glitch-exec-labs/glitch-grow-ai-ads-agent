@@ -13,7 +13,21 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-22
 
-- **18:30 UTC** — auto-sync: 2026-04-22 18:30 UTC (`75ee427`) — 2 files
+- **19:45 UTC** — auto-sync: 2026-04-22 19:45 UTC (`52ae0de`) — 2 files
+        A	src/ads_agent/agent/analysis/__init__.py
+        A	src/ads_agent/agent/analysis/campaign_decomposer.py
+- **18:31 UTC** — feat(actions): guardrails for pause-on-paused and raise-on-undersized (`56cc49a`) — 2 files
+    Fix two classes of mistake caught in QA of the 22-Apr-2026 Ayurpet report:
+    1. Pause-a-dead-target: the one-off report proposed pausing 7 Meta
+       campaigns/adsets that were already paused (14d insights shows spend
+       from BEFORE the target was paused; written up as if still active).
+    2. Raise-budget-on-undersized-campaign: 4 Amazon campaigns recommended
+       for cap increases were only burning 1–15% of their existing caps —
+       budget was never the throttle, bids were.
+    New src/ads_agent/actions/guardrails.py:
+      - assert_pause_applicable(platform, target_id, fetch_effective_status)
+        Rejects pause proposals when effective_status ∈
+- **18:30 UTC** — auto-sync: 2026-04-22 18:30 UTC (`513b284`) — 3 files
         A	src/ads_agent/actions/guardrails.py
         M	src/ads_agent/actions/notifier.py
 - **04:02 UTC** — refactor(playbook): move per-brand playbooks to private package (`0cc1ce7`) — 3 files
