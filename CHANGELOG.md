@@ -13,7 +13,47 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-22
 
-- **00:45 UTC** — auto-sync: 2026-04-22 00:45 UTC (`c689039`) — 4 files
+- **01:45 UTC** — auto-sync: 2026-04-22 01:45 UTC (`6f1abe6`) — 6 files
+        M	ops/scripts/run_action_planner.py
+        M	src/ads_agent/actions/executor.py
+        M	src/ads_agent/actions/models.py
+        M	src/ads_agent/actions/planner.py
+        M	src/ads_agent/telegram/bot.py
+        ... (+1 more)
+- **01:26 UTC** — feat(amazon-insights): flip /amazon Ads block to MAP, keep Seller Central on Airbyte (`7808f67`) — 2 files
+    Our Airbyte Amazon Ads connection (EU region, covers IN + AE) has a
+    ~56% data-loss bug (job history shows 3 failed + 2 cancelled syncs in
+    the Apr 18-19 window). MAP proxies Amazon's Partner Network API
+    directly and returns authoritative, hour-fresh totals.
+    This commit:
+      - Adds map.mcp_client.ads_totals(integration_id, account_id, days)
+        — single ask_report_analyst call, structured totals, ~1s latency.
+      - Switches amazon_insights_node's Amazon Ads block to MAP as primary
+        data source with a transparent Airbyte fallback on MAP failure
+        (plan lapse, server down).
+- **00:56 UTC** — feat(amazon-recs): ask_report_analyst fallback for non-US markets (`8474c15`) — 2 files
+    Amazon's native account_recs endpoint is US-only and MAP's response
+    politely points at ask_report_analyst as the fallback for other
+    marketplaces. Wire that into amazon_recs_node so IN + AE (and any
+    future non-US Ayurpet market) still get actionable recommendations
+    instead of a dead "not available" line.
+    Uses a templated prompt requesting 5 highest-impact optimization
+    opportunities with specific entity names, justifying metrics, and
+    one-verb action verbs — matches the SellerApp 4-bucket harvesting
+    framework we codified in Section V of the playbook.
+    Smoke test on ayurpet-ind returned 5 real recommendations totaling
+- **00:47 UTC** — feat(amazon-recs): wire MAP MCP into /amazon_recs Telegram command (`3b26be4`) — 4 files
+    Completes the MAP integration started in 1d16ee6 (auto-synced). Registers
+    the `amazon_recs` node in the LangGraph router, exposes `/amazon_recs
+    <store>` in Telegram, and polishes the node's output so non-US market
+    errors render cleanly instead of as raw JSON.
+    Output is complementary to /amazon (which reads our Airbyte warehouse):
+      • Enabled SP campaign roster with daily budgets, bid strategy, and
+        targeting type — top 5 by budget, count of the rest.
+      • Amazon's account-level recommendations (US-only; IN + AE get a
+        clean "not available for this market" message pointing at the
+        report_analyst fallback).
+- **00:45 UTC** — auto-sync: 2026-04-22 00:45 UTC (`1d16ee6`) — 5 files
         A	src/ads_agent/agent/nodes/amazon_recs.py
         M	src/ads_agent/config.py
         A	src/ads_agent/map/__init__.py
