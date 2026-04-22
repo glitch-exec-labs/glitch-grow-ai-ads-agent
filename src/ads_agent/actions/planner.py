@@ -42,6 +42,7 @@ from typing import Callable
 import asyncpg
 import httpx
 
+from ads_agent.actions.guardrails import GuardrailViolation
 from ads_agent.actions.models import ActionProposal, AYURPET_CHAT_ID
 from ads_agent.actions.notifier import TelegramNotifyError, post_proposal
 from ads_agent.config import STORE_MAP_ACCOUNTS
@@ -444,6 +445,11 @@ async def plan_amazon_for_store(
             await post_proposal(pool, prop, chat_id)
             posted += 1
             recent.add(prop.target_object_id)
+        except GuardrailViolation as e:
+            log.info(
+                "guardrail skip Amazon %s: %s", prop.target_object_id, e,
+            )
+            recent.add(prop.target_object_id)
         except TelegramNotifyError as e:
             log.warning(
                 "notify failed for Amazon target %s (will retry next tick): %s",
@@ -479,6 +485,14 @@ async def plan_for_store(pool: asyncpg.Pool, store_slug: str, chat_id: int) -> i
                     posted += 1
                     recent.add(r["adset_id"])  # don't double-propose same target
                     break  # one proposal per adset per planner run
+                except GuardrailViolation as e:
+                    # Pre-write check rejected this proposal (e.g. already paused).
+                    # Add to `recent` so we don't re-evaluate this target again
+                    # this tick, but don't retry on the next tick either — the
+                    # target state isn't coming back to "actionable" on its own.
+                    log.info("guardrail skip %s: %s", r["adset_id"], e)
+                    recent.add(r["adset_id"])
+                    break
                 except TelegramNotifyError as e:
                     # Row exists as 'notify_failed' — do NOT add to `recent`
                     # so the next planner tick can retry. Issue #6.
