@@ -13,14 +13,36 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-22
 
-- **01:45 UTC** — auto-sync: 2026-04-22 01:45 UTC (`6f1abe6`) — 6 files
+- **18:30 UTC** — auto-sync: 2026-04-22 18:30 UTC (`75ee427`) — 2 files
+        A	src/ads_agent/actions/guardrails.py
+        M	src/ads_agent/actions/notifier.py
+- **04:02 UTC** — refactor(playbook): move per-brand playbooks to private package (`0cc1ce7`) — 3 files
+    Per-brand playbooks (Ayurpet, future clients) contain tuned thresholds,
+    account IDs, SKU lists, and vendor benchmarks — the "step behind" asset
+    we want to keep out of public forks. The public repo now ships only
+    demo.md as a format reference; the real playbooks live in the
+    glitch-grow-ads-playbook package and are loaded at runtime when
+    installed. .gitignore ignores playbooks/*.md except demo.md so we
+    can't accidentally re-commit a real one.
+- **02:25 UTC** — feat(telegram): push command menu to BotFather + add /scan_amazon to /help (`25d0f57`) — 2 files
+    Telegram's '/' command-autocomplete menu is a separate per-bot setting
+    from the app's CommandHandler registrations — CommandHandlers make the
+    command work, but the menu needs setMyCommands called once. Previously
+    only old commands were in the menu; /amazon_recs and /scan_amazon were
+    invisible in the UI despite being handled by the bot.
+    Adds:
+      - ops/scripts/set_bot_commands.py — re-runnable helper that pushes
+        the full 16-command list to BotFather via setMyCommands. Source of
+        truth for the UI menu; keep in sync with bot.py registrations.
+        Supports --show (read back current menu) and --clear.
+- **01:45 UTC** — auto-sync: 2026-04-22 01:45 UTC (`ce10e0a`) — 7 files
         M	ops/scripts/run_action_planner.py
         M	src/ads_agent/actions/executor.py
         M	src/ads_agent/actions/models.py
         M	src/ads_agent/actions/planner.py
         M	src/ads_agent/telegram/bot.py
         ... (+1 more)
-- **01:26 UTC** — feat(amazon-insights): flip /amazon Ads block to MAP, keep Seller Central on Airbyte (`7808f67`) — 2 files
+- **01:26 UTC** — feat(amazon-insights): flip /amazon Ads block to MAP, keep Seller Central on Airbyte (`eef86da`) — 2 files
     Our Airbyte Amazon Ads connection (EU region, covers IN + AE) has a
     ~56% data-loss bug (job history shows 3 failed + 2 cancelled syncs in
     the Apr 18-19 window). MAP proxies Amazon's Partner Network API
@@ -31,7 +53,7 @@ Body text (if present) shown as indented sub-bullets.
       - Switches amazon_insights_node's Amazon Ads block to MAP as primary
         data source with a transparent Airbyte fallback on MAP failure
         (plan lapse, server down).
-- **00:56 UTC** — feat(amazon-recs): ask_report_analyst fallback for non-US markets (`8474c15`) — 2 files
+- **00:56 UTC** — feat(amazon-recs): ask_report_analyst fallback for non-US markets (`2527cbb`) — 2 files
     Amazon's native account_recs endpoint is US-only and MAP's response
     politely points at ask_report_analyst as the fallback for other
     marketplaces. Wire that into amazon_recs_node so IN + AE (and any
@@ -42,8 +64,8 @@ Body text (if present) shown as indented sub-bullets.
     one-verb action verbs — matches the SellerApp 4-bucket harvesting
     framework we codified in Section V of the playbook.
     Smoke test on ayurpet-ind returned 5 real recommendations totaling
-- **00:47 UTC** — feat(amazon-recs): wire MAP MCP into /amazon_recs Telegram command (`3b26be4`) — 4 files
-    Completes the MAP integration started in 1d16ee6 (auto-synced). Registers
+- **00:47 UTC** — feat(amazon-recs): wire MAP MCP into /amazon_recs Telegram command (`ff6bb6b`) — 4 files
+    Completes the MAP integration started in 443c842 (auto-synced). Registers
     the `amazon_recs` node in the LangGraph router, exposes `/amazon_recs
     <store>` in Telegram, and polishes the node's output so non-US market
     errors render cleanly instead of as raw JSON.
@@ -53,12 +75,12 @@ Body text (if present) shown as indented sub-bullets.
       • Amazon's account-level recommendations (US-only; IN + AE get a
         clean "not available for this market" message pointing at the
         report_analyst fallback).
-- **00:45 UTC** — auto-sync: 2026-04-22 00:45 UTC (`1d16ee6`) — 5 files
+- **00:45 UTC** — auto-sync: 2026-04-22 00:45 UTC (`443c842`) — 5 files
         A	src/ads_agent/agent/nodes/amazon_recs.py
         M	src/ads_agent/config.py
         A	src/ads_agent/map/__init__.py
         A	src/ads_agent/map/mcp_client.py
-- **00:39 UTC** — feat(ga4): wire first-party GA4 attribution into roas_compute (`0baa52d`) — 5 files
+- **00:39 UTC** — feat(ga4): wire first-party GA4 attribution into roas_compute (`b95cbc2`) — 5 files
     New ads_agent.ga4.client exposes a thin async wrapper over the GA4 Data
     API (run_report in a thread-pool) returning headline purchase metrics for
     a store over the last N days: revenue, currency, purchases, sessions,
@@ -69,14 +91,14 @@ Body text (if present) shown as indented sub-bullets.
     family + Mokshya see no behavior change.
     Config additions:
       - ga4_service_account_json_path — points at the shared Vertex SA JSON
-- **00:00 UTC** — auto-sync: 2026-04-22 00:00 UTC (`ab7a753`) — 2 files
+- **00:00 UTC** — auto-sync: 2026-04-22 00:00 UTC (`c7b4d70`) — 2 files
         D	.claude/scheduled_tasks.lock
 
 ## 2026-04-21
 
-- **23:30 UTC** — auto-sync: 2026-04-21 23:30 UTC (`5787a93`) — 2 files
+- **23:30 UTC** — auto-sync: 2026-04-21 23:30 UTC (`70557bb`) — 2 files
         A	.claude/scheduled_tasks.lock
-- **21:09 UTC** — feat(playbook): inject brand brief into ideas + creative_critique nodes (`7f9a831`) — 2 files
+- **21:09 UTC** — feat(playbook): inject brand brief into ideas + creative_critique nodes (`4fe3f54`) — 2 files
     Mirrors the wiring already in tracking_audit_node: loads Section X brief
     from /playbooks/<brand>.md via ads_agent.playbook.node_brief() and appends
     it to the node's system prompt as authoritative brand context.
@@ -87,7 +109,7 @@ Body text (if present) shown as indented sub-bullets.
     Falls back to vanilla system prompt for brands without a playbook (Urban
     family, Mokshya) so behavior there is unchanged.
     Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
-- **19:56 UTC** — feat(playbook): codified Ayurpet playbook + runtime loader (`099c5a4`) — 4 files
+- **19:56 UTC** — feat(playbook): codified Ayurpet playbook + runtime loader (`a641b06`) — 3 files
     The agent now has every Ayurpet data feed wired (Meta API, Amazon Ads via
     Airbyte, Seller Central, Shopify, Sales & Traffic, PostHog). What it lacked
     was *codified expertise* — the decision rules that turn that data into
