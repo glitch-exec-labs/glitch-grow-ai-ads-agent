@@ -85,26 +85,31 @@ async def amazon_recs_node(state: dict) -> dict:
     elif "error" in recs:
         lines.append(f"*Account recs:* error — {recs['error'][:100]}")
     else:
-        # Shape varies; fall back to a generic summary line + top few
-        # recommendation items if present
-        items = (
-            recs.get("recommendations")
-            or recs.get("items")
-            or (recs.get("data") or {}).get("recommendations")
-            or []
-        )
-        if not items:
-            # If server returns a different wrapper, dump a best-effort preview
-            preview = str(recs)[:250]
-            lines.append(f"*Account recs:* {preview}")
+        # MAP returns error strings under `text` for unsupported endpoints
+        # (e.g. account_recs is US-only — other marketplaces get a helpful
+        # "use ask_report_analyst instead" message).
+        text_msg = recs.get("text") or ""
+        if text_msg and ("error" in text_msg.lower() or "not available" in text_msg.lower()):
+            lines.append(f"*Account recs:* not available for {country} market")
+            lines.append(f"  _{text_msg[:200]}_")
         else:
-            lines.append(f"*Account recs:* {len(items)} surfaced")
-            for r in items[:5]:
-                kind = r.get("recommendationType") or r.get("type") or "?"
-                desc = r.get("description") or r.get("message") or ""
-                lines.append(f"  • [{kind}] {str(desc)[:110]}")
-            if len(items) > 5:
-                lines.append(f"  …+{len(items) - 5} more")
+            items = (
+                recs.get("recommendations")
+                or recs.get("items")
+                or (recs.get("data") or {}).get("recommendations")
+                or []
+            )
+            if not items:
+                preview = str(recs)[:250]
+                lines.append(f"*Account recs:* {preview}")
+            else:
+                lines.append(f"*Account recs:* {len(items)} surfaced")
+                for r in items[:5]:
+                    kind = r.get("recommendationType") or r.get("type") or "?"
+                    desc = r.get("description") or r.get("message") or ""
+                    lines.append(f"  • [{kind}] {str(desc)[:110]}")
+                if len(items) > 5:
+                    lines.append(f"  …+{len(items) - 5} more")
     lines.append("")
 
     # 3. Budget recommendations (paid)
