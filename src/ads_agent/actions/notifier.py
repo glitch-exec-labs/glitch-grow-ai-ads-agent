@@ -16,9 +16,28 @@ from typing import Optional
 import asyncpg
 import httpx
 
+from ads_agent.actions.guardrails import (
+    GuardrailViolation,
+    assert_pause_applicable,
+    fetch_meta_ad_status,
+    fetch_meta_adset_status,
+    fetch_meta_campaign_status,
+)
 from ads_agent.actions.models import ActionProposal, format_telegram_message
 
 log = logging.getLogger(__name__)
+
+
+# Action-kind → (platform, status_fetcher) for pre-write guardrails.
+# Only listed if the action is destructive (pause/cut). Budget changes and
+# keyword adds don't need a pause-applicability check.
+_PAUSE_STATUS_FETCHERS = {
+    "pause_adset":     ("meta",   fetch_meta_adset_status),
+    "pause_ad":        ("meta",   fetch_meta_ad_status),
+    "amazon_pause_ad": ("amazon", None),   # Amazon path has its own state lookup path; enabled in executor
+    # "resume_adset" intentionally NOT guarded — resume IS applicable on a paused target
+    # "update_adset_budget" guarded separately via assert_budget_change_applicable
+}
 
 TELEGRAM_API = "https://api.telegram.org"
 
