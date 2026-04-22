@@ -13,7 +13,31 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-22
 
-- **20:00 UTC** — auto-sync: 2026-04-22 20:00 UTC (`75113f0`) — 2 files
+- **22:45 UTC** — auto-sync: 2026-04-22 22:45 UTC (`1ed2985`) — 1 file
+        A	.claude/scheduled_tasks.lock
+- **20:25 UTC** — feat(amazon_recs): retrofit to methodology-driven decomposer pipeline (`383b326`) — 3 files
+    Replaces the single thin ask_report_analyst wrapper with the full
+    decomposer + campaign_analyst pipeline. Every /amazon_recs <slug> call
+    now drills into the top-spend campaign and produces surgical,
+    entity-level recommendations instead of campaign-level blunt advice.
+    Flow per invocation:
+      1. list_sp_campaigns for roster + budget cap overview
+      2. For the top-N (default 1) highest-budget campaigns:
+           a. decompose_sp_campaign — campaign + ad-group + keyword/target/ad
+              hierarchy with aggregated 14d metrics + concentration ratios
+           b. analyze_campaign(brand=<slug-derived>) — methodology prompt
+- **20:06 UTC** — feat(analysis): methodology-driven campaign analyst with hierarchy drill-down (`2cdc7d4`) — 1 file
+    Fix the "amateur analysis" class of mistake caught by the Ayurpet founder:
+    v2 recommendations said "pause Ap-TopKey-GWTH because ROAS 0.9×" while
+    80% of that campaign's spend was on ONE winning keyword. The resolution
+    can't be "pause the campaign"; it has to be surgical — kill the specific
+    loser child, keep the hero untouched.
+    New package: src/ads_agent/agent/analysis/
+      - campaign_decomposer.py
+        Pulls campaign → ad_group → keyword/target/product_ad tree from MAP
+        with aggregated 14d metrics per child. Computes concentration ratios
+        (top_child_pct_spend, top_3_pct_spend, tail_pct_spend + tail_roas,
+- **20:00 UTC** — auto-sync: 2026-04-22 20:00 UTC (`0961dd0`) — 3 files
         A	src/ads_agent/agent/analysis/campaign_analyst.py
         M	src/ads_agent/agent/analysis/campaign_decomposer.py
 - **19:45 UTC** — auto-sync: 2026-04-22 19:45 UTC (`991ada7`) — 3 files
