@@ -21,10 +21,13 @@ import os
 from dataclasses import dataclass
 from functools import lru_cache
 
+from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 log = logging.getLogger(__name__)
+
+load_dotenv()
 
 
 @dataclass(frozen=True)
@@ -283,6 +286,7 @@ class Settings(BaseSettings):
     tiktok_access_token: str = ""
     tiktok_app_id: str = ""
     tiktok_app_secret: str = ""
+    tiktok_env: str = "sandbox"
 
     # PostHog Cloud
     posthog_api_key: str = ""

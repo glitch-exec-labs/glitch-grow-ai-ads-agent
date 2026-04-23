@@ -91,7 +91,7 @@ async def advertiser_info(advertiser_id: str) -> dict[str, Any]:
                 _access_token(),
                 fields=["name", "currency", "status"],
             )
-        except ApiException as exc:
+        except Exception as exc:
             raise TikTokError(f"advertiser_info: {exc}") from exc
         return _expect_ok(response)
 
@@ -123,7 +123,7 @@ async def advertiser_spend(advertiser_id: str, days: int = 7) -> dict[str, Any]:
                 page_size=max(30, days),
                 enable_total_metrics=True,
             )
-        except ApiException as exc:
+        except Exception as exc:
             raise TikTokError(f"report_integrated_get: {exc}") from exc
         return _expect_ok(response)
 
