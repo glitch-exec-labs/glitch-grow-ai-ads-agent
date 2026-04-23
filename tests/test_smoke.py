@@ -27,3 +27,10 @@ def test_graph_builds():
 
     g = build_graph()
     assert g is not None
+
+
+
+def test_tiktok_store_mapping_defaults_empty():
+    from ads_agent.config import STORE_TIKTOK_ACCOUNTS
+
+    assert isinstance(STORE_TIKTOK_ACCOUNTS, dict)

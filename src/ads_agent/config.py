@@ -120,7 +120,37 @@ STORE_AD_ACCOUNTS: dict[str, list[str]] = _load_store_ad_accounts()
 
 
 # ---------------------------------------------------------------------------
-# GA4 stream mapping — store slug → GA4 property + data stream.
+# TikTok mapping — store slug -> TikTok advertiser account metadata.
+# ---------------------------------------------------------------------------
+
+
+def _load_store_tiktok_accounts() -> dict[str, dict[str, str]]:
+    raw = os.environ.get("STORE_TIKTOK_ACCOUNTS_JSON", "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError, ValueError) as ex:
+        log.warning("STORE_TIKTOK_ACCOUNTS_JSON invalid, returning empty map: %s", ex)
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    for slug, cfg in parsed.items():
+        if not isinstance(cfg, dict):
+            continue
+        advertiser_id = str(cfg.get("advertiser_id") or "").strip()
+        country = str(cfg.get("country") or "").strip().upper()
+        if not advertiser_id:
+            log.warning("STORE_TIKTOK_ACCOUNTS_JSON[%s] missing advertiser_id", slug)
+            continue
+        out[slug] = {"advertiser_id": advertiser_id, "country": country}
+    return out
+
+
+STORE_TIKTOK_ACCOUNTS: dict[str, dict[str, str]] = _load_store_tiktok_accounts()
+
+
+# ---------------------------------------------------------------------------
+# GA4 stream mapping — store slug -> GA4 property + data stream.
 #
 # Shape of STORE_GA4_STREAMS_JSON env var:
 #   {
@@ -248,6 +278,11 @@ class Settings(BaseSettings):
     meta_access_token: str = ""
     meta_app_id: str = ""
     meta_app_secret: str = ""
+
+    # TikTok Business API (forked SDK wrapper under ads_agent.tiktok)
+    tiktok_access_token: str = ""
+    tiktok_app_id: str = ""
+    tiktok_app_secret: str = ""
 
     # PostHog Cloud
     posthog_api_key: str = ""
