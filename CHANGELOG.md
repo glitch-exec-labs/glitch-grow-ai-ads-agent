@@ -13,7 +13,9 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-23
 
-- **07:45 UTC** — auto-sync: 2026-04-23 07:45 UTC (`6d98db8`) — 1 file
+- **08:15 UTC** — auto-sync: 2026-04-23 08:15 UTC (`a70e90d`) — 1 file
+        M	src/ads_agent/amazon/oauth.py
+- **07:45 UTC** — auto-sync: 2026-04-23 07:45 UTC (`1a3ac62`) — 2 files
         M	src/ads_agent/agent/nodes/tiktok_insights.py
 - **07:30 UTC** — auto-sync: 2026-04-23 07:30 UTC (`0b77243`) — 9 files
         M	.env.example
