@@ -1,40 +1,27 @@
 """tiktok_insights: TikTok advertiser snapshot + paid media totals."""
 from __future__ import annotations
 
-from ads_agent.config import STORE_TIKTOK_ACCOUNTS, get_store, settings
+from ads_agent.agent.nodes.tiktok_common import load_tiktok_context
+from ads_agent.config import settings
 from ads_agent.tiktok.client import TikTokError, advertiser_info, advertiser_spend
-from ads_agent.tiktok.oauth import resolve_access_token
 
 
 async def tiktok_insights_node(state: dict) -> dict:
-    slug = state["store_slug"]
-    days = int(state.get("days", 7))
-    store = get_store(slug)
-    if store is None:
-        return {**state, "reply_text": f"Unknown store: `{slug}`. Try /stores."}
+    slug = state['store_slug']
+    days = int(state.get('days', 7))
+    ctx, error = await load_tiktok_context(slug)
+    if error:
+        return {**state, 'reply_text': error}
+    assert ctx is not None
 
-    cfg = STORE_TIKTOK_ACCOUNTS.get(slug)
-    if not cfg:
-        return {
-            **state,
-            "reply_text": (
-                f"*{store.brand}* · TikTok\n\n"
-                f"No TikTok advertiser is mapped for `{slug}`.\n"
-                "Set `STORE_TIKTOK_ACCOUNTS_JSON` with an `advertiser_id` for this store."
-            ),
-        }
-
-    advertiser_id = cfg["advertiser_id"]
-    oauth_token = await resolve_access_token(slug)
-    auth_source = "oauth" if oauth_token else "env"
     try:
-        info = await advertiser_info(advertiser_id, access_token=oauth_token)
-        metrics = await advertiser_spend(advertiser_id, days=days, access_token=oauth_token)
+        info = await advertiser_info(ctx.advertiser_id, access_token=ctx.access_token)
+        metrics = await advertiser_spend(ctx.advertiser_id, days=days, access_token=ctx.access_token)
     except TikTokError as exc:
         return {
             **state,
-            "reply_text": (
-                f"*{store.brand}* · TikTok\n\n"
+            'reply_text': (
+                f"*{ctx.store.brand}* · TikTok\n\n"
                 f"Could not query TikTok yet: {exc}\n"
                 "Required now: either complete TikTok OAuth via "
                 f"`/api/tiktok/consent-url?account_ref={slug}` or set "
@@ -42,18 +29,17 @@ async def tiktok_insights_node(state: dict) -> dict:
             ),
         }
 
-    name = info.get("name") or f"Advertiser {advertiser_id}"
-    currency = info.get("currency") or store.currency
-    status = info.get("status") or "unknown"
-    country = cfg.get("country") or "n/a"
-    configured_env = settings().tiktok_env.strip() or "sandbox"
-    env_label = "production" if oauth_token and slug != "tiktok-sandbox" else configured_env
+    name = info.get('name') or f"Advertiser {ctx.advertiser_id}"
+    currency = info.get('currency') or ctx.store.currency
+    status = info.get('status') or 'unknown'
+    configured_env = settings().tiktok_env.strip() or 'sandbox'
+    env_label = 'production' if ctx.access_token and slug != 'tiktok-sandbox' else configured_env
 
     lines = [
-        f"*{store.brand}* · TikTok (last {days}d)",
-        "",
-        f"Advertiser: `{name}` · ID `{advertiser_id}`",
-        f"Status: `{status}` · Country: `{country}` · Env: `{env_label}` · Auth: `{auth_source}`",
+        f"*{ctx.store.brand}* · TikTok (last {days}d)",
+        '',
+        f"Advertiser: `{name}` · ID `{ctx.advertiser_id}`",
+        f"Status: `{status}` · Country: `{ctx.country}` · Env: `{env_label}` · Auth: `{ctx.auth_source}`",
         (
             f"Spend: {metrics['spend']:,.2f} {currency} · "
             f"Impressions: {metrics['impressions']:,} · Clicks: {metrics['clicks']:,}"
@@ -67,16 +53,16 @@ async def tiktok_insights_node(state: dict) -> dict:
     ]
     return {
         **state,
-        "reply_text": "\n".join(lines),
-        "orders_summary": {
-            "channel": "tiktok",
-            "advertiser_id": advertiser_id,
-            "spend": metrics["spend"],
-            "impressions": metrics["impressions"],
-            "clicks": metrics["clicks"],
-            "ctr": metrics["ctr"],
-            "cpc": metrics["cpc"],
-            "currency": currency,
-            "auth_source": auth_source,
+        'reply_text': '\n'.join(lines),
+        'orders_summary': {
+            'channel': 'tiktok',
+            'advertiser_id': ctx.advertiser_id,
+            'spend': metrics['spend'],
+            'impressions': metrics['impressions'],
+            'clicks': metrics['clicks'],
+            'ctr': metrics['ctr'],
+            'cpc': metrics['cpc'],
+            'currency': currency,
+            'auth_source': ctx.auth_source,
         },
     }

@@ -11,10 +11,18 @@ _IMPORT_ERROR: Exception | None = None
 
 try:
     from business_api_client.api.account_management_api import AccountManagementApi
+    from business_api_client.api.campaign_creation_api import CampaignCreationApi
+    from business_api_client.api.measurement_api import MeasurementApi
     from business_api_client.api.reporting_api import ReportingApi
+    from business_api_client.models.campaign_status_update_body import CampaignStatusUpdateBody
+    from business_api_client.models.campaign_update_body import CampaignUpdateBody
 except Exception as exc:  # pragma: no cover - exercised implicitly by runtime imports
     AccountManagementApi = None  # type: ignore[assignment]
+    CampaignCreationApi = None  # type: ignore[assignment]
+    MeasurementApi = None  # type: ignore[assignment]
     ReportingApi = None  # type: ignore[assignment]
+    CampaignStatusUpdateBody = None  # type: ignore[assignment]
+    CampaignUpdateBody = None  # type: ignore[assignment]
     _IMPORT_ERROR = exc
 
 
@@ -23,7 +31,15 @@ class TikTokError(RuntimeError):
 
 
 def _require_sdk() -> None:
-    if _IMPORT_ERROR is not None or AccountManagementApi is None or ReportingApi is None:
+    if (
+        _IMPORT_ERROR is not None
+        or AccountManagementApi is None
+        or CampaignCreationApi is None
+        or MeasurementApi is None
+        or ReportingApi is None
+        or CampaignStatusUpdateBody is None
+        or CampaignUpdateBody is None
+    ):
         raise TikTokError(
             "TikTok SDK is unavailable. Install project dependencies to pull "
             "glitch-exec-labs/tiktok-business-api-sdk."
@@ -38,7 +54,7 @@ def _access_token(override: str | None = None) -> str:
 
 
 def _unwrap(response: Any) -> dict[str, Any]:
-    if hasattr(response, "to_dict"):
+    if hasattr(response, 'to_dict'):
         body = response.to_dict()
         if isinstance(body, dict):
             return body
@@ -49,12 +65,12 @@ def _unwrap(response: Any) -> dict[str, Any]:
 
 def _expect_ok(response: Any) -> dict[str, Any]:
     body = _unwrap(response)
-    code = body.get("code")
+    code = body.get('code')
     if code not in (0, None):
-        msg = body.get("message") or "unknown error"
-        req = body.get("request_id") or "n/a"
+        msg = body.get('message') or 'unknown error'
+        req = body.get('request_id') or 'n/a'
         raise TikTokError(f"TikTok API error {code}: {msg} (request_id={req})")
-    data = body.get("data")
+    data = body.get('data')
     return data if isinstance(data, dict) else {}
 
 
@@ -79,6 +95,36 @@ def _to_int(value: Any) -> int:
         return 0
 
 
+def _page_size(limit: int, *, default: int = 10, maximum: int = 100) -> int:
+    try:
+        parsed = int(limit)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(1, min(parsed, maximum))
+
+
+def normalize_campaign_operation(value: str) -> str:
+    raw = str(value or '').strip().upper()
+    if raw.startswith('OPERATION_STATUS_'):
+        raw = raw.removeprefix('OPERATION_STATUS_')
+    aliases = {
+        'ENABLE': 'ENABLE',
+        'ENABLED': 'ENABLE',
+        'ON': 'ENABLE',
+        'START': 'ENABLE',
+        'RESUME': 'ENABLE',
+        'DISABLE': 'DISABLE',
+        'DISABLED': 'DISABLE',
+        'OFF': 'DISABLE',
+        'PAUSE': 'DISABLE',
+        'PAUSED': 'DISABLE',
+        'STOP': 'DISABLE',
+    }
+    if raw in aliases:
+        return aliases[raw]
+    raise TikTokError('Unsupported TikTok campaign operation. Use enable or disable.')
+
+
 async def advertiser_info(advertiser_id: str, *, access_token: str | None = None) -> dict[str, Any]:
     _require_sdk()
 
@@ -87,14 +133,14 @@ async def advertiser_info(advertiser_id: str, *, access_token: str | None = None
             response = AccountManagementApi().advertiser_info(
                 [advertiser_id],
                 _access_token(access_token),
-                fields=["name", "currency", "status"],
+                fields=['name', 'currency', 'status'],
             )
         except Exception as exc:
-            raise TikTokError(f"advertiser_info: {exc}") from exc
+            raise TikTokError(f'advertiser_info: {exc}') from exc
         return _expect_ok(response)
 
     data = await asyncio.to_thread(_call)
-    rows = data.get("list") if isinstance(data, dict) else None
+    rows = data.get('list') if isinstance(data, dict) else None
     if isinstance(rows, list) and rows:
         first = rows[0]
         return first if isinstance(first, dict) else {}
@@ -113,13 +159,13 @@ async def advertiser_spend(
     def _call() -> dict[str, Any]:
         try:
             response = ReportingApi().report_integrated_get(
-                "BASIC",
+                'BASIC',
                 _access_token(access_token),
                 advertiser_id=advertiser_id,
-                service_type="AUCTION",
-                data_level="AUCTION_ADVERTISER",
-                dimensions=["stat_time_day"],
-                metrics=["spend", "impressions", "clicks"],
+                service_type='AUCTION',
+                data_level='AUCTION_ADVERTISER',
+                dimensions=['stat_time_day'],
+                metrics=['spend', 'impressions', 'clicks'],
                 start_date=start_date,
                 end_date=end_date,
                 page=1,
@@ -127,31 +173,178 @@ async def advertiser_spend(
                 enable_total_metrics=True,
             )
         except Exception as exc:
-            raise TikTokError(f"report_integrated_get: {exc}") from exc
+            raise TikTokError(f'report_integrated_get: {exc}') from exc
         return _expect_ok(response)
 
     data = await asyncio.to_thread(_call)
-    totals = data.get("total_metrics") if isinstance(data.get("total_metrics"), dict) else {}
-    rows = data.get("list") if isinstance(data.get("list"), list) else []
+    totals = data.get('total_metrics') if isinstance(data.get('total_metrics'), dict) else {}
+    rows = data.get('list') if isinstance(data.get('list'), list) else []
     if not totals and rows:
         totals = {
-            "spend": sum(_to_float(r.get("spend")) for r in rows if isinstance(r, dict)),
-            "impressions": sum(_to_int(r.get("impressions")) for r in rows if isinstance(r, dict)),
-            "clicks": sum(_to_int(r.get("clicks")) for r in rows if isinstance(r, dict)),
+            'spend': sum(_to_float(r.get('spend')) for r in rows if isinstance(r, dict)),
+            'impressions': sum(_to_int(r.get('impressions')) for r in rows if isinstance(r, dict)),
+            'clicks': sum(_to_int(r.get('clicks')) for r in rows if isinstance(r, dict)),
         }
 
-    spend = _to_float(totals.get("spend"))
-    impressions = _to_int(totals.get("impressions"))
-    clicks = _to_int(totals.get("clicks"))
+    spend = _to_float(totals.get('spend'))
+    impressions = _to_int(totals.get('impressions'))
+    clicks = _to_int(totals.get('clicks'))
     ctr = (clicks / impressions * 100.0) if impressions else 0.0
     cpc = (spend / clicks) if clicks else 0.0
     return {
-        "spend": spend,
-        "impressions": impressions,
-        "clicks": clicks,
-        "ctr": ctr,
-        "cpc": cpc,
-        "start_date": start_date,
-        "end_date": end_date,
-        "raw_total_metrics": totals,
+        'spend': spend,
+        'impressions': impressions,
+        'clicks': clicks,
+        'ctr': ctr,
+        'cpc': cpc,
+        'start_date': start_date,
+        'end_date': end_date,
+        'raw_total_metrics': totals,
     }
+
+
+async def list_campaigns(
+    advertiser_id: str,
+    limit: int = 10,
+    *,
+    access_token: str | None = None,
+) -> dict[str, Any]:
+    _require_sdk()
+
+    def _call() -> dict[str, Any]:
+        try:
+            response = CampaignCreationApi().campaign_get(
+                advertiser_id,
+                _access_token(access_token),
+                page=1,
+                page_size=_page_size(limit),
+                fields=[
+                    'campaign_id',
+                    'campaign_name',
+                    'objective_type',
+                    'operation_status',
+                    'secondary_status',
+                    'budget',
+                    'budget_mode',
+                    'modify_time',
+                ],
+            )
+        except Exception as exc:
+            raise TikTokError(f'campaign_get: {exc}') from exc
+        return _expect_ok(response)
+
+    data = await asyncio.to_thread(_call)
+    rows = data.get('list') if isinstance(data.get('list'), list) else []
+    page_info = data.get('page_info') if isinstance(data.get('page_info'), dict) else {}
+    campaigns: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        campaigns.append(
+            {
+                'campaign_id': str(row.get('campaign_id') or '').strip(),
+                'campaign_name': str(row.get('campaign_name') or '').strip(),
+                'objective_type': str(row.get('objective_type') or '').strip(),
+                'operation_status': str(row.get('operation_status') or '').strip(),
+                'secondary_status': str(row.get('secondary_status') or '').strip(),
+                'budget': _to_float(row.get('budget')),
+                'budget_mode': str(row.get('budget_mode') or '').strip(),
+                'modify_time': str(row.get('modify_time') or '').strip(),
+            }
+        )
+    return {'campaigns': campaigns, 'page_info': page_info}
+
+
+async def update_campaign_status(
+    advertiser_id: str,
+    campaign_id: str,
+    operation_status: str,
+    *,
+    access_token: str | None = None,
+) -> dict[str, Any]:
+    _require_sdk()
+
+    def _call() -> dict[str, Any]:
+        try:
+            body = CampaignStatusUpdateBody(
+                advertiser_id=advertiser_id,
+                campaign_ids=[str(campaign_id)],
+                operation_status=normalize_campaign_operation(operation_status),
+            )
+            response = CampaignCreationApi().campaign_status_update(
+                _access_token(access_token),
+                body=body,
+            )
+        except Exception as exc:
+            raise TikTokError(f'campaign_status_update: {exc}') from exc
+        return _expect_ok(response)
+
+    return await asyncio.to_thread(_call)
+
+
+async def update_campaign_budget(
+    advertiser_id: str,
+    campaign_id: str,
+    budget: float,
+    *,
+    access_token: str | None = None,
+) -> dict[str, Any]:
+    _require_sdk()
+
+    def _call() -> dict[str, Any]:
+        try:
+            body = CampaignUpdateBody(
+                advertiser_id=advertiser_id,
+                campaign_id=str(campaign_id),
+                budget=float(budget),
+            )
+            response = CampaignCreationApi().campaign_update(
+                _access_token(access_token),
+                body=body,
+            )
+        except Exception as exc:
+            raise TikTokError(f'campaign_update: {exc}') from exc
+        return _expect_ok(response)
+
+    return await asyncio.to_thread(_call)
+
+
+async def list_pixels(
+    advertiser_id: str,
+    limit: int = 10,
+    *,
+    access_token: str | None = None,
+) -> dict[str, Any]:
+    _require_sdk()
+
+    def _call() -> dict[str, Any]:
+        try:
+            response = MeasurementApi().pixel_list(
+                advertiser_id,
+                _access_token(access_token),
+                page=1,
+                page_size=_page_size(limit),
+            )
+        except Exception as exc:
+            raise TikTokError(f'pixel_list: {exc}') from exc
+        return _expect_ok(response)
+
+    data = await asyncio.to_thread(_call)
+    rows = data.get('pixels') if isinstance(data.get('pixels'), list) else []
+    page_info = data.get('page_info') if isinstance(data.get('page_info'), dict) else {}
+    pixels: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        pixels.append(
+            {
+                'pixel_id': str(row.get('pixel_id') or '').strip(),
+                'pixel_name': str(row.get('pixel_name') or '').strip(),
+                'pixel_code': str(row.get('pixel_code') or '').strip(),
+                'activity_status': str(row.get('activity_status') or '').strip(),
+                'partner_name': str(row.get('partner_name') or '').strip(),
+                'pixel_setup_mode': str(row.get('pixel_setup_mode') or '').strip(),
+                'events': row.get('events') if isinstance(row.get('events'), list) else [],
+            }
+        )
+    return {'pixels': pixels, 'page_info': page_info}
