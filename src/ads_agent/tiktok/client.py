@@ -12,11 +12,9 @@ _IMPORT_ERROR: Exception | None = None
 try:
     from business_api_client.api.account_management_api import AccountManagementApi
     from business_api_client.api.reporting_api import ReportingApi
-    from business_api_client.rest import ApiException
 except Exception as exc:  # pragma: no cover - exercised implicitly by runtime imports
     AccountManagementApi = None  # type: ignore[assignment]
     ReportingApi = None  # type: ignore[assignment]
-    ApiException = Exception  # type: ignore[assignment]
     _IMPORT_ERROR = exc
 
 
@@ -32,10 +30,10 @@ def _require_sdk() -> None:
         )
 
 
-def _access_token() -> str:
-    token = settings().tiktok_access_token.strip()
+def _access_token(override: str | None = None) -> str:
+    token = (override or settings().tiktok_access_token).strip()
     if not token:
-        raise TikTokError("TIKTOK_ACCESS_TOKEN not set")
+        raise TikTokError("TikTok access token not set")
     return token
 
 
@@ -81,14 +79,14 @@ def _to_int(value: Any) -> int:
         return 0
 
 
-async def advertiser_info(advertiser_id: str) -> dict[str, Any]:
+async def advertiser_info(advertiser_id: str, *, access_token: str | None = None) -> dict[str, Any]:
     _require_sdk()
 
     def _call() -> dict[str, Any]:
         try:
             response = AccountManagementApi().advertiser_info(
                 [advertiser_id],
-                _access_token(),
+                _access_token(access_token),
                 fields=["name", "currency", "status"],
             )
         except Exception as exc:
@@ -103,7 +101,12 @@ async def advertiser_info(advertiser_id: str) -> dict[str, Any]:
     return {}
 
 
-async def advertiser_spend(advertiser_id: str, days: int = 7) -> dict[str, Any]:
+async def advertiser_spend(
+    advertiser_id: str,
+    days: int = 7,
+    *,
+    access_token: str | None = None,
+) -> dict[str, Any]:
     _require_sdk()
     start_date, end_date = _date_window(days)
 
@@ -111,7 +114,7 @@ async def advertiser_spend(advertiser_id: str, days: int = 7) -> dict[str, Any]:
         try:
             response = ReportingApi().report_integrated_get(
                 "BASIC",
-                _access_token(),
+                _access_token(access_token),
                 advertiser_id=advertiser_id,
                 service_type="AUCTION",
                 data_level="AUCTION_ADVERTISER",

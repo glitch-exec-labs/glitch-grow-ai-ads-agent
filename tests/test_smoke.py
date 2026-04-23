@@ -34,3 +34,10 @@ def test_tiktok_store_mapping_defaults_empty():
     from ads_agent.config import STORE_TIKTOK_ACCOUNTS
 
     assert isinstance(STORE_TIKTOK_ACCOUNTS, dict)
+
+
+def test_tiktok_oauth_constants():
+    from ads_agent.tiktok.oauth import DEFAULT_RETURN_URL, TIKTOK_CONSENT_URL
+
+    assert DEFAULT_RETURN_URL.endswith('/tiktok/oauth/callback')
+    assert 'marketing_api/auth' in TIKTOK_CONSENT_URL
