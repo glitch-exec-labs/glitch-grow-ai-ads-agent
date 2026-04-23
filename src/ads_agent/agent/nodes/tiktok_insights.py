@@ -46,7 +46,8 @@ async def tiktok_insights_node(state: dict) -> dict:
     currency = info.get("currency") or store.currency
     status = info.get("status") or "unknown"
     country = cfg.get("country") or "n/a"
-    env_label = settings().tiktok_env.strip() or "sandbox"
+    configured_env = settings().tiktok_env.strip() or "sandbox"
+    env_label = "production" if oauth_token and slug != "tiktok-sandbox" else configured_env
 
     lines = [
         f"*{store.brand}* · TikTok (last {days}d)",
