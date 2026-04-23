@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from ads_agent.config import STORE_TIKTOK_ACCOUNTS, get_store, settings
 from ads_agent.tiktok.client import TikTokError, advertiser_info, advertiser_spend
+from ads_agent.tiktok.oauth import resolve_access_token
 
 
 async def tiktok_insights_node(state: dict) -> dict:
@@ -24,17 +25,20 @@ async def tiktok_insights_node(state: dict) -> dict:
         }
 
     advertiser_id = cfg["advertiser_id"]
+    oauth_token = await resolve_access_token(slug)
+    auth_source = "oauth" if oauth_token else "env"
     try:
-        info = await advertiser_info(advertiser_id)
-        metrics = await advertiser_spend(advertiser_id, days=days)
+        info = await advertiser_info(advertiser_id, access_token=oauth_token)
+        metrics = await advertiser_spend(advertiser_id, days=days, access_token=oauth_token)
     except TikTokError as exc:
         return {
             **state,
             "reply_text": (
                 f"*{store.brand}* · TikTok\n\n"
                 f"Could not query TikTok yet: {exc}\n"
-                "Required now: `TIKTOK_ACCESS_TOKEN` and "
-                f"`STORE_TIKTOK_ACCOUNTS_JSON[{slug}]`."
+                "Required now: either complete TikTok OAuth via "
+                f"`/api/tiktok/consent-url?account_ref={slug}` or set "
+                "`TIKTOK_ACCESS_TOKEN` manually."
             ),
         }
 
@@ -48,7 +52,7 @@ async def tiktok_insights_node(state: dict) -> dict:
         f"*{store.brand}* · TikTok (last {days}d)",
         "",
         f"Advertiser: `{name}` · ID `{advertiser_id}`",
-        f"Status: `{status}` · Country: `{country}` · Env: `{env_label}`",
+        f"Status: `{status}` · Country: `{country}` · Env: `{env_label}` · Auth: `{auth_source}`",
         (
             f"Spend: {metrics['spend']:,.2f} {currency} · "
             f"Impressions: {metrics['impressions']:,} · Clicks: {metrics['clicks']:,}"
@@ -72,5 +76,6 @@ async def tiktok_insights_node(state: dict) -> dict:
             "ctr": metrics["ctr"],
             "cpc": metrics["cpc"],
             "currency": currency,
+            "auth_source": auth_source,
         },
     }

@@ -209,6 +209,95 @@ async def api_amazon_oauth_receive(request: Request) -> dict:
     return result
 
 
+
+@app.get("/api/tiktok/consent-url")
+async def api_tiktok_consent_url(request: Request) -> dict:
+    """Generate a TikTok Marketing API consent URL.
+
+    Gated by the same AGENT_RUN_TOKEN bearer as /agent/run (admin-only).
+    Query params:
+      account_ref — logical key for who this authorization is for
+                    (e.g. "urban" or "glitch-executor"). Required.
+      notes       — optional free-text label for the pending state row.
+    """
+    expected = settings().agent_run_token
+    if not expected:
+        raise HTTPException(status_code=503, detail="endpoint disabled (no token)")
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or not hmac.compare_digest(auth[len("Bearer "):], expected):
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+    account_ref = request.query_params.get("account_ref", "").strip()
+    if not account_ref:
+        raise HTTPException(status_code=400, detail="account_ref required")
+    notes = request.query_params.get("notes")
+
+    import asyncpg
+    from ads_agent.tiktok.oauth import DEFAULT_RETURN_URL, OAuthError, generate_consent_url
+
+    pool = await asyncpg.create_pool(
+        os.environ.get("POSTGRES_RW_URL") or settings().postgres_insights_ro_url,
+        min_size=1, max_size=2,
+    )
+    try:
+        try:
+            url = await generate_consent_url(pool, account_ref=account_ref, notes=notes)
+        except OAuthError as e:
+            raise HTTPException(status_code=400, detail=f"oauth config: {e}")
+    finally:
+        await pool.close()
+    return {
+        "url": url,
+        "state_expires_in_seconds": 600,
+        "account_ref": account_ref,
+        "return_url": DEFAULT_RETURN_URL,
+    }
+
+
+@app.post("/api/tiktok/oauth/receive")
+async def api_tiktok_oauth_receive(request: Request) -> dict:
+    """Callback landing — called by the Cloudflare Pages Function at
+    grow.glitchexecutor.com/tiktok/oauth/callback after TikTok redirects the
+    user back with ?auth_code=X&state=Y.
+
+    Gated by INTERNAL_API_SECRET (shared between CF Function and this server).
+    Body: {"code": "...", "state": "..."}
+    """
+    expected = os.environ.get("INTERNAL_API_SECRET", "").strip()
+    if not expected:
+        log.error("INTERNAL_API_SECRET is unset — refusing TikTok oauth callback")
+        raise HTTPException(status_code=503, detail="oauth receiver disabled")
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer ") or not hmac.compare_digest(auth[len("Bearer "):], expected):
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid json body")
+    code = (body.get("code") or body.get("auth_code") or "").strip()
+    state = (body.get("state") or "").strip()
+    if not code or not state:
+        raise HTTPException(status_code=400, detail="code and state are required")
+
+    import asyncpg
+    from ads_agent.tiktok.oauth import OAuthError, receive_callback
+
+    pool = await asyncpg.create_pool(
+        os.environ.get("POSTGRES_RW_URL") or settings().postgres_insights_ro_url,
+        min_size=1, max_size=2,
+    )
+    try:
+        try:
+            result = await receive_callback(pool, code=code, state=state)
+        except OAuthError as e:
+            log.warning("TikTok oauth receive failed: %s", e)
+            raise HTTPException(status_code=400, detail=f"oauth: {e}")
+    finally:
+        await pool.close()
+    return result
+
+
 @app.post("/agent/run")
 async def agent_run(request: Request) -> dict:
     """Direct LangGraph entrypoint.

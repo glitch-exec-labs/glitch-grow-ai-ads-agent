@@ -13,7 +13,14 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-23
 
-- **07:15 UTC** — auto-sync: 2026-04-23 07:15 UTC (`1b9650b`) — 5 files
+- **07:30 UTC** — auto-sync: 2026-04-23 07:30 UTC (`349df6d`) — 8 files
+        M	.env.example
+        A	ops/scripts/migrate_tiktok_oauth.sql
+        M	src/ads_agent/agent/nodes/tiktok_insights.py
+        M	src/ads_agent/server.py
+        M	src/ads_agent/tiktok/__init__.py
+        ... (+3 more)
+- **07:15 UTC** — auto-sync: 2026-04-23 07:15 UTC (`276f908`) — 6 files
         M	.env.example
         M	src/ads_agent/agent/nodes/tiktok_insights.py
         M	src/ads_agent/config.py
