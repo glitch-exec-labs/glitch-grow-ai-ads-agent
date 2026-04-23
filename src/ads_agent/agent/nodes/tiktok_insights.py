@@ -1,7 +1,7 @@
 """tiktok_insights: TikTok advertiser snapshot + paid media totals."""
 from __future__ import annotations
 
-from ads_agent.config import STORE_TIKTOK_ACCOUNTS, get_store
+from ads_agent.config import STORE_TIKTOK_ACCOUNTS, get_store, settings
 from ads_agent.tiktok.client import TikTokError, advertiser_info, advertiser_spend
 
 
@@ -42,12 +42,13 @@ async def tiktok_insights_node(state: dict) -> dict:
     currency = info.get("currency") or store.currency
     status = info.get("status") or "unknown"
     country = cfg.get("country") or "n/a"
+    env_label = settings().tiktok_env.strip() or "sandbox"
 
     lines = [
         f"*{store.brand}* · TikTok (last {days}d)",
         "",
         f"Advertiser: `{name}` · ID `{advertiser_id}`",
-        f"Status: `{status}` · Country: `{country}`",
+        f"Status: `{status}` · Country: `{country}` · Env: `{env_label}`",
         (
             f"Spend: {metrics['spend']:,.2f} {currency} · "
             f"Impressions: {metrics['impressions']:,} · Clicks: {metrics['clicks']:,}"
