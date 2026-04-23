@@ -37,7 +37,7 @@ log = logging.getLogger(__name__)
 LWA_TOKEN_URL  = "https://api.amazon.com/auth/o2/token"
 LWA_CONSENT_URL = "https://www.amazon.com/ap/oa"
 
-DEFAULT_SCOPE = "advertising::campaign_management advertising::account_management"
+DEFAULT_SCOPE = "advertising::campaign_management"
 
 # Where Amazon redirects the user after they click Allow.
 # This must match ONE of the "Allowed Return URLs" on the LWA Security Profile.
