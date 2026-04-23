@@ -58,6 +58,37 @@ async def cmd_stores(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 
+async def _invoke_and_reply(
+    update: Update,
+    state_in: dict,
+    *,
+    working_text: str,
+    log_args: dict,
+) -> None:
+    status_msg = await update.message.reply_text(working_text)
+
+    state: dict = {}
+    try:
+        state = await _graph.ainvoke(state_in)
+        reply = state.get("reply_text", "(no reply)")
+    except Exception as e:
+        reply = f"error: {e}"
+
+    try:
+        await status_msg.edit_text(reply, parse_mode=ParseMode.MARKDOWN)
+    except Exception:
+        await status_msg.edit_text(reply)
+
+    log_turn(
+        command=str(state_in.get("command", "unknown")),
+        store_slug=state_in.get("store_slug") or None,
+        user_tg_id=update.effective_user.id if update.effective_user else None,
+        args=log_args,
+        reply_text=reply,
+        key_metrics=state.get("orders_summary") if isinstance(state.get("orders_summary"), dict) else None,
+    )
+
+
 async def _run_and_reply(update: Update, command: str, days_default: int, args: list[str]) -> None:
     if not args:
         await update.message.reply_text(f"usage: /{command} <store> [days]")
@@ -69,30 +100,11 @@ async def _run_and_reply(update: Update, command: str, days_default: int, args: 
         await update.message.reply_text(f"Unknown store `{slug}`. /stores for list.", parse_mode=ParseMode.MARKDOWN)
         return
 
-    # Placeholder "working..." so the user sees activity during LLM calls
-    status_msg = await update.message.reply_text(f"Running /{command} {slug} {days}d…")
-
-    state: dict = {}
-    try:
-        state = await _graph.ainvoke({"command": command, "store_slug": slug, "days": days})
-        reply = state.get("reply_text", "(no reply)")
-    except Exception as e:
-        reply = f"error: {e}"
-
-    try:
-        await status_msg.edit_text(reply, parse_mode=ParseMode.MARKDOWN)
-    except Exception:
-        # Markdown parse fail → send as plain so the reply still lands
-        await status_msg.edit_text(reply)
-
-    # Fire-and-forget memory log (post-reply so it never delays user-visible output)
-    log_turn(
-        command=command,
-        store_slug=slug,
-        user_tg_id=update.effective_user.id if update.effective_user else None,
-        args={"days": days},
-        reply_text=reply,
-        key_metrics=state.get("orders_summary") if isinstance(state.get("orders_summary"), dict) else None,
+    await _invoke_and_reply(
+        update,
+        {"command": command, "store_slug": slug, "days": days},
+        working_text=f"Running /{command} {slug} {days}d…",
+        log_args={"days": days},
     )
 
 
@@ -151,6 +163,103 @@ async def cmd_tiktok(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update):
         return
     await _run_and_reply(update, "tiktok", 7, ctx.args or [])
+
+
+async def cmd_tiktok_campaigns(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_admin(update):
+        return
+    args = ctx.args or []
+    if not args:
+        await update.message.reply_text("usage: /tiktok_campaigns <store> [limit]")
+        return
+    slug = args[0]
+    limit = int(args[1]) if len(args) > 1 and args[1].isdigit() else 10
+    if get_store(slug) is None:
+        await update.message.reply_text(f"Unknown store `{slug}`. /stores for list.", parse_mode=ParseMode.MARKDOWN)
+        return
+    await _invoke_and_reply(
+        update,
+        {"command": "tiktok_campaigns", "store_slug": slug, "limit": limit},
+        working_text=f"Running /tiktok_campaigns {slug} {limit}…",
+        log_args={"limit": limit},
+    )
+
+
+async def cmd_tiktok_campaign_status(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_admin(update):
+        return
+    args = ctx.args or []
+    if len(args) < 3:
+        await update.message.reply_text(
+            "usage: /tiktok_campaign_status <store> <campaign_id> <enable|disable>"
+        )
+        return
+    slug, campaign_id, campaign_status = args[0], args[1], args[2]
+    if get_store(slug) is None:
+        await update.message.reply_text(f"Unknown store `{slug}`. /stores for list.", parse_mode=ParseMode.MARKDOWN)
+        return
+    await _invoke_and_reply(
+        update,
+        {
+            "command": "tiktok_campaign_status",
+            "store_slug": slug,
+            "campaign_id": campaign_id,
+            "campaign_status": campaign_status,
+        },
+        working_text=f"Running /tiktok_campaign_status {slug} {campaign_id} {campaign_status}…",
+        log_args={"campaign_id": campaign_id, "campaign_status": campaign_status},
+    )
+
+
+async def cmd_tiktok_campaign_budget(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_admin(update):
+        return
+    args = ctx.args or []
+    if len(args) < 3:
+        await update.message.reply_text(
+            "usage: /tiktok_campaign_budget <store> <campaign_id> <budget>"
+        )
+        return
+    slug, campaign_id = args[0], args[1]
+    try:
+        budget = float(args[2])
+    except ValueError:
+        await update.message.reply_text("budget must be numeric")
+        return
+    if get_store(slug) is None:
+        await update.message.reply_text(f"Unknown store `{slug}`. /stores for list.", parse_mode=ParseMode.MARKDOWN)
+        return
+    await _invoke_and_reply(
+        update,
+        {
+            "command": "tiktok_campaign_budget",
+            "store_slug": slug,
+            "campaign_id": campaign_id,
+            "budget": budget,
+        },
+        working_text=f"Running /tiktok_campaign_budget {slug} {campaign_id} {budget:,.2f}…",
+        log_args={"campaign_id": campaign_id, "budget": budget},
+    )
+
+
+async def cmd_tiktok_pixels(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_admin(update):
+        return
+    args = ctx.args or []
+    if not args:
+        await update.message.reply_text("usage: /tiktok_pixels <store> [limit]")
+        return
+    slug = args[0]
+    limit = int(args[1]) if len(args) > 1 and args[1].isdigit() else 10
+    if get_store(slug) is None:
+        await update.message.reply_text(f"Unknown store `{slug}`. /stores for list.", parse_mode=ParseMode.MARKDOWN)
+        return
+    await _invoke_and_reply(
+        update,
+        {"command": "tiktok_pixels", "store_slug": slug, "limit": limit},
+        working_text=f"Running /tiktok_pixels {slug} {limit}…",
+        log_args={"limit": limit},
+    )
 
 
 async def cmd_scan_amazon(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
