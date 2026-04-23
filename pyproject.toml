@@ -30,6 +30,7 @@ dependencies = [
 
   # Meta
   "facebook-business>=21.0",
+  "python_sdk @ git+https://github.com/glitch-exec-labs/tiktok-business-api-sdk.git@main#subdirectory=python_sdk",
 
   # PostHog
   "posthog>=3.7",
@@ -61,6 +62,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ads_agent"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.ruff]
 line-length = 100
