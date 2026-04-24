@@ -23,6 +23,7 @@ from typing import Any
 
 from ads_agent.meta.graph_client import (
     account_info,
+    account_spend,
     ads_for_account_lean,
     adsets_for_account,
     campaigns_for_account,
@@ -157,6 +158,7 @@ class MetaAccountHierarchy:
     summary: AccountSummary
     pre_flight: PreFlight
     campaigns: list[CampaignRow] = field(default_factory=list)
+    skipped_noise: dict = field(default_factory=dict)   # {count, total_spend, reason}
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -194,18 +196,19 @@ def _mk_concentration(ads: list[AdRow], campaign_revenue: float) -> Concentratio
 
 
 async def decompose_meta_account(
-    ad_account_id: str, *, days: int = 14,
+    ad_account_id: str, *, days: int = 14, noise_floor: float = 500.0,
 ) -> MetaAccountHierarchy:
     """Three Graph API calls (campaigns + adsets + ads) + one account_info,
     joined in Python. Total runtime typically 2–6s for an account with
     <50 campaigns and <500 ads.
     """
     t0 = time.time()
-    info, camp_rows, adset_rows, ad_rows = await _parallel(
+    info, camp_rows, adset_rows, ad_rows, hygiene_7d = await _parallel(
         account_info(ad_account_id),
         campaigns_for_account(ad_account_id, days=days),
         adsets_for_account(ad_account_id, days=days),
         ads_for_account_lean(ad_account_id, days=days, limit=1000),
+        account_spend(ad_account_id, days=7),
     )
 
     currency = info.get("currency", "?")
@@ -274,6 +277,15 @@ async def decompose_meta_account(
         ))
     campaigns.sort(key=lambda c: c.spend, reverse=True)
 
+    # Filter out tiny-spend campaigns — below noise_floor they're either
+    # paused stragglers or half-built shells. Keep them counted in the
+    # account summary totals but drop from the analyst payload so the
+    # LLM doesn't burn tokens wrongly pausing ₹418 campaigns.
+    significant = [c for c in campaigns if c.spend >= noise_floor or c.purchases > 0]
+    dropped = [c for c in campaigns if c not in significant]
+    dropped_spend = sum(c.spend for c in dropped)
+    dropped_count = len(dropped)
+
     # Account summary
     total_spend = sum(c.spend for c in campaigns)
     total_rev   = sum(c.purchase_value for c in campaigns)
@@ -299,26 +311,44 @@ async def decompose_meta_account(
         blended_cpc=round(total_spend / total_clicks, 2) if total_clicks > 0 else 0.0,
     )
 
-    # Pre-flight hygiene
+    # Pre-flight hygiene — always use an independent 7-day pull so the
+    # hygiene verdict is canonical regardless of the audit's data window.
+    # Pixel is broken only if 7-day spend is meaningful but 0 purchases
+    # OR purchases recorded with 0 value (a common mis-configuration where
+    # the event fires but doesn't pass `value` + `currency`).
+    h7_spend = float(hygiene_7d.get("spend", 0) or 0)
+    h7_purch = int(hygiene_7d.get("purchases", 0) or 0)
+    h7_value = float(hygiene_7d.get("purchase_value", 0) or 0)
+    pixel_ok = (
+        h7_spend < 1000  # too little spend to reliably detect — assume ok
+        or (h7_purch > 0 and h7_value > 0)
+    )
     asc = sum(1 for c in campaigns if c.is_asc_plus)
     pre = PreFlight(
         attribution_window="7d_click (default)",
         days_window=days,
         day_of_week_skew_risk=(days < 7),
-        purchase_event_count_7d=total_purch if days <= 7 else -1,  # meaningful only on 7d pulls
-        purchase_event_value_sum_7d=round(total_rev, 2) if days <= 7 else -1.0,
+        purchase_event_count_7d=h7_purch,
+        purchase_event_value_sum_7d=round(h7_value, 2),
         purchase_event_currency_sane=(currency not in ("", "?")),
-        pixel_hygiene_ok=(total_purch > 0 and total_rev > 0),
+        pixel_hygiene_ok=pixel_ok,
         asc_plus_campaign_count=asc,
         manual_campaign_count=len(campaigns) - asc,
     )
 
     log.info(
-        "meta_decompose: account=%s days=%d → %d campaigns, %d adsets, %d ads in %.1fs",
-        ad_account_id, days, summary.n_campaigns, summary.n_adsets, summary.n_ads,
-        time.time() - t0,
+        "meta_decompose: account=%s days=%d → %d significant campaigns "
+        "(+%d noise skipped, ₹%.0f), %d adsets, %d ads in %.1fs",
+        ad_account_id, days, len(significant), dropped_count, dropped_spend,
+        summary.n_adsets, summary.n_ads, time.time() - t0,
     )
-    return MetaAccountHierarchy(summary=summary, pre_flight=pre, campaigns=campaigns)
+    return MetaAccountHierarchy(
+        summary=summary, pre_flight=pre, campaigns=significant,
+        skipped_noise={
+            "count": dropped_count, "total_spend": round(dropped_spend, 2),
+            "reason": f"spend < {noise_floor:.0f} {currency} and 0 purchases",
+        },
+    )
 
 
 async def _parallel(*coros):

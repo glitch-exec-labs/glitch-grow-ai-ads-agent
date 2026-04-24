@@ -87,14 +87,21 @@ async def meta_audit_node(state: dict) -> dict:
         }
 
     body = (report.get("diagnosis") or "").strip()
-    n_actions = len(report.get("actions") or [])
-    # Header with account-level anchor
+    noise = hierarchy.skipped_noise or {}
+    noise_line = ""
+    if noise.get("count", 0) > 0:
+        noise_line = (
+            f" · {noise['count']} low-signal campaigns skipped "
+            f"({noise['total_spend']:,.0f} {hierarchy.summary.currency} total, "
+            f"{noise['reason']})"
+        )
     header = (
         f"*{store.brand} · Meta audit* · account `{ad_account_id}` · "
-        f"{days}d · {hierarchy.summary.n_campaigns} campaigns · "
-        f"{hierarchy.summary.spend:,.0f} {hierarchy.summary.currency} spent · "
-        f"ROAS {hierarchy.summary.blended_roas:.2f}×\n"
-        f"_methodology: playbooks/{_brand_for(slug)}.md · Section X · "
-        f"{n_actions} rule-qualified actions_\n\n"
+        f"{days}d · {len(hierarchy.campaigns)}/{hierarchy.summary.n_campaigns} campaigns "
+        f"analysed{noise_line}\n"
+        f"spend {hierarchy.summary.spend:,.0f} {hierarchy.summary.currency} · "
+        f"{hierarchy.summary.purchases} purchases · "
+        f"blended ROAS {hierarchy.summary.blended_roas:.2f}×\n"
+        f"_methodology: playbooks/{_brand_for(slug)}.md · Section X_\n\n"
     )
     return {**state, "reply_text": header + body}
