@@ -14,6 +14,7 @@ Body text (if present) shown as indented sub-bullets.
 ## 2026-04-24
 
 - **21:00 UTC** — auto-sync: 2026-04-24 17:30 UTC (`648ea7c`) — 3 files
+- **17:30 UTC** — auto-sync: 2026-04-24 17:30 UTC (`f362169`) — 2 files
         M	src/ads_agent/agent/nodes/ads_leaderboard.py
         M	src/ads_agent/meta/graph_client.py
 - **17:26 UTC** — fix(meta_audit): pre-flight hygiene + noise-campaign filter (`cd071f2`) — 2 files
