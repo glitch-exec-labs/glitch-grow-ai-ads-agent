@@ -21,6 +21,7 @@ from ads_agent.telegram.handlers import (
     cmd_alerts,
     cmd_amazon,
     cmd_amazon_recs,
+    cmd_meta_audit,
     cmd_attribution,
     cmd_scan_amazon,
     cmd_creative,

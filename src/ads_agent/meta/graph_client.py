@@ -245,3 +245,217 @@ async def creative_details(ad_id: str, days: int = 7) -> dict:
         "purchase_value": purchase_value,
         "reported_roas": (purchase_value / spend) if spend > 0 else 0.0,
     }
+
+
+# ---------------------------------------------------------------------------
+# Meta audit hierarchy pulls — campaign → adset → ad (joined with insights)
+# ---------------------------------------------------------------------------
+
+def _time_params(days: int) -> dict:
+    if days in (7, 14, 28, 30, 90):
+        return {"date_preset": f"last_{days}d"}
+    from datetime import datetime, timedelta, timezone
+    end = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    return {"time_range": f'{{"since":"{start}","until":"{end}"}}'}
+
+
+def _is_asc_plus(campaign_meta: dict) -> bool:
+    """Heuristic: Advantage+ Shopping Campaigns carry smart_promotion_type,
+    AUTOMATED_SHOPPING_ADS objective or `is_smart_promotion=True` flag, or
+    the special name prefix Meta uses on creation ("Advantage+ "). We
+    merge signals so the check works across account vintages."""
+    name = (campaign_meta.get("name") or "").lower()
+    if "advantage+" in name or name.startswith("asc "):
+        return True
+    if campaign_meta.get("smart_promotion_type"):
+        return True
+    obj = (campaign_meta.get("objective") or "").upper()
+    # Meta returns OUTCOME_SALES for manual sales campaigns too; the
+    # objective alone isn't enough. Keep as false-positive guard only.
+    return obj in {"AUTOMATED_SHOPPING_ADS"}
+
+
+async def campaigns_for_account(
+    ad_account_id: str, days: int = 14, limit: int = 200,
+) -> list[dict]:
+    """Return joined campaign metadata + campaign-level insights.
+
+    One row per campaign, metrics over last N days. Includes objective,
+    buying_type, budget, daily_budget, start/end time, and an `is_asc_plus`
+    flag derived from Meta's smart_promotion_type.
+    """
+    meta_body = await _get(
+        f"{ad_account_id}/campaigns",
+        {
+            "fields": "id,name,status,effective_status,objective,buying_type,"
+                      "daily_budget,lifetime_budget,start_time,stop_time,"
+                      "smart_promotion_type,special_ad_categories",
+            "limit": limit,
+        },
+    )
+    camp_by_id: dict[str, dict] = {c["id"]: c for c in meta_body.get("data", [])}
+
+    insights_body = await _get(
+        f"{ad_account_id}/insights",
+        {
+            "level": "campaign",
+            "fields": "campaign_id,campaign_name,spend,impressions,clicks,ctr,"
+                      "cpc,cpm,frequency,reach,actions,action_values,account_currency",
+            "limit": limit,
+            **_time_params(days),
+        },
+    )
+
+    out: list[dict] = []
+    for row in insights_body.get("data", []):
+        cid = row.get("campaign_id")
+        c = camp_by_id.get(cid, {})
+        purchases, purchase_value = _sum_purchases(row)
+        spend = float(row.get("spend", 0) or 0)
+        daily = float(c.get("daily_budget") or 0) / 100.0  # Meta cents → currency
+        out.append({
+            "campaign_id": cid,
+            "name": c.get("name") or row.get("campaign_name", ""),
+            "status": c.get("status", ""),
+            "effective_status": c.get("effective_status", ""),
+            "objective": c.get("objective", ""),
+            "buying_type": c.get("buying_type", ""),
+            "is_asc_plus": _is_asc_plus(c),
+            "daily_budget": daily,
+            "lifetime_budget": float(c.get("lifetime_budget") or 0) / 100.0,
+            "currency": row.get("account_currency", "?"),
+            "spend": spend,
+            "impressions": int(row.get("impressions", 0) or 0),
+            "clicks": int(row.get("clicks", 0) or 0),
+            "ctr": float(row.get("ctr", 0) or 0),
+            "cpc": float(row.get("cpc", 0) or 0),
+            "cpm": float(row.get("cpm", 0) or 0),
+            "frequency": float(row.get("frequency", 0) or 0),
+            "reach": int(row.get("reach", 0) or 0),
+            "purchases": purchases,
+            "purchase_value": purchase_value,
+            "roas": (purchase_value / spend) if spend > 0 else 0.0,
+        })
+    # Surface DISABLED / PAUSED campaigns with zero 14d spend that insights
+    # won't return — the audit still wants to see them listed.
+    returned_ids = {r["campaign_id"] for r in out}
+    for cid, c in camp_by_id.items():
+        if cid in returned_ids:
+            continue
+        out.append({
+            "campaign_id": cid,
+            "name": c.get("name", ""),
+            "status": c.get("status", ""),
+            "effective_status": c.get("effective_status", ""),
+            "objective": c.get("objective", ""),
+            "buying_type": c.get("buying_type", ""),
+            "is_asc_plus": _is_asc_plus(c),
+            "daily_budget": float(c.get("daily_budget") or 0) / 100.0,
+            "lifetime_budget": float(c.get("lifetime_budget") or 0) / 100.0,
+            "currency": "?", "spend": 0.0, "impressions": 0, "clicks": 0,
+            "ctr": 0.0, "cpc": 0.0, "cpm": 0.0, "frequency": 0.0, "reach": 0,
+            "purchases": 0, "purchase_value": 0.0, "roas": 0.0,
+        })
+    return out
+
+
+async def adsets_for_account(
+    ad_account_id: str, days: int = 14, limit: int = 500,
+) -> list[dict]:
+    """One row per ad set with campaign_id parent + 14d insights."""
+    meta_body = await _get(
+        f"{ad_account_id}/adsets",
+        {
+            "fields": "id,name,status,effective_status,campaign_id,"
+                      "daily_budget,lifetime_budget,optimization_goal,"
+                      "billing_event,bid_strategy,targeting",
+            "limit": limit,
+        },
+    )
+    as_by_id: dict[str, dict] = {a["id"]: a for a in meta_body.get("data", [])}
+
+    insights_body = await _get(
+        f"{ad_account_id}/insights",
+        {
+            "level": "adset",
+            "fields": "adset_id,adset_name,campaign_id,spend,impressions,clicks,"
+                      "ctr,cpc,cpm,frequency,reach,actions,action_values",
+            "limit": limit,
+            **_time_params(days),
+        },
+    )
+    out: list[dict] = []
+    for row in insights_body.get("data", []):
+        aid = row.get("adset_id")
+        a = as_by_id.get(aid, {})
+        purchases, purchase_value = _sum_purchases(row)
+        spend = float(row.get("spend", 0) or 0)
+        out.append({
+            "adset_id": aid,
+            "campaign_id": row.get("campaign_id") or a.get("campaign_id", ""),
+            "name": a.get("name") or row.get("adset_name", ""),
+            "status": a.get("status", ""),
+            "effective_status": a.get("effective_status", ""),
+            "optimization_goal": a.get("optimization_goal", ""),
+            "billing_event": a.get("billing_event", ""),
+            "bid_strategy": a.get("bid_strategy", ""),
+            "daily_budget": float(a.get("daily_budget") or 0) / 100.0,
+            "spend": spend,
+            "impressions": int(row.get("impressions", 0) or 0),
+            "clicks": int(row.get("clicks", 0) or 0),
+            "ctr": float(row.get("ctr", 0) or 0),
+            "cpc": float(row.get("cpc", 0) or 0),
+            "cpm": float(row.get("cpm", 0) or 0),
+            "frequency": float(row.get("frequency", 0) or 0),
+            "reach": int(row.get("reach", 0) or 0),
+            "purchases": purchases,
+            "purchase_value": purchase_value,
+            "roas": (purchase_value / spend) if spend > 0 else 0.0,
+        })
+    # Append PAUSED/ARCHIVED ad sets that had no 14d spend
+    seen = {r["adset_id"] for r in out}
+    for aid, a in as_by_id.items():
+        if aid in seen:
+            continue
+        out.append({
+            "adset_id": aid,
+            "campaign_id": a.get("campaign_id", ""),
+            "name": a.get("name", ""),
+            "status": a.get("status", ""),
+            "effective_status": a.get("effective_status", ""),
+            "optimization_goal": a.get("optimization_goal", ""),
+            "billing_event": a.get("billing_event", ""),
+            "bid_strategy": a.get("bid_strategy", ""),
+            "daily_budget": float(a.get("daily_budget") or 0) / 100.0,
+            "spend": 0.0, "impressions": 0, "clicks": 0, "ctr": 0.0, "cpc": 0.0,
+            "cpm": 0.0, "frequency": 0.0, "reach": 0, "purchases": 0,
+            "purchase_value": 0.0, "roas": 0.0,
+        })
+    return out
+
+
+async def ad_ctr_trend_7d(ad_id: str) -> dict:
+    """Return {ctr_7d, ctr_prev7d, delta_pct} for fatigue-diagnosis.
+
+    Two consecutive 7-day windows compared. A drop >30% (delta_pct < -0.3)
+    combined with frequency > 2.5 is the fatigue signal.
+    """
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc).date()
+
+    def window(start_ago: int, end_ago: int) -> str:
+        s = (now - timedelta(days=start_ago)).strftime("%Y-%m-%d")
+        e = (now - timedelta(days=end_ago)).strftime("%Y-%m-%d")
+        return f'{{"since":"{s}","until":"{e}"}}'
+
+    async def fetch(tr: str) -> float:
+        b = await _get(f"{ad_id}/insights",
+                       {"fields": "ctr", "time_range": tr})
+        d = b.get("data", [])
+        return float(d[0].get("ctr", 0) or 0) if d else 0.0
+
+    ctr_7d = await fetch(window(6, 0))
+    ctr_prev = await fetch(window(13, 7))
+    delta = (ctr_7d - ctr_prev) / ctr_prev if ctr_prev > 0 else 0.0
+    return {"ctr_7d": ctr_7d, "ctr_prev7d": ctr_prev, "delta_pct": delta}
