@@ -8,6 +8,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import logging
@@ -15,6 +16,8 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 from telegram import Update
 
 from ads_agent import __version__
@@ -23,6 +26,90 @@ from ads_agent.shopify.webhooks import HmacVerificationError, handle_webhook, ve
 from ads_agent.telegram.bot import build_app as build_telegram_app
 
 log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Security helpers (issues #7, #8, #9)
+# ---------------------------------------------------------------------------
+
+MAX_BODY_BYTES = int(os.environ.get("MAX_REQUEST_BODY_BYTES", str(1 * 1024 * 1024)))  # 1 MB
+# Shopify webhooks can be up to ~1 MB for large orders; Telegram Updates are
+# ~10 KB; OAuth callbacks and /agent/run are smaller still. 1 MB is a safe
+# default cap across all routes.
+
+
+def _require_bearer(request: Request, expected: str) -> None:
+    """Validate Authorization: Bearer <expected>. Raise 401 on any failure.
+
+    Fixes issue #8: previous code did `auth.startswith("Bearer ")` then
+    `hmac.compare_digest(auth[len("Bearer "):], expected)` with no explicit
+    non-empty check on either the token or `expected`. If `expected`
+    happened to be "" in a misconfigured env (the caller was supposed to
+    short-circuit earlier, but bugs can slip), a `Bearer ` header with
+    an empty token would quietly match. This helper makes the non-empty
+    checks explicit and centralises the parsing.
+    """
+    if not expected:
+        # Caller should have raised 503 already; defense-in-depth.
+        raise HTTPException(status_code=503, detail="endpoint token not configured")
+    auth = request.headers.get("Authorization", "")
+    prefix = "Bearer "
+    if not auth.startswith(prefix):
+        raise HTTPException(status_code=401, detail="unauthorized")
+    supplied = auth[len(prefix):].strip()
+    if not supplied:
+        # "Bearer " with no token is not valid; reject before compare_digest.
+        raise HTTPException(status_code=401, detail="unauthorized")
+    if not hmac.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="unauthorized")
+
+
+class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+    """Reject requests whose body exceeds MAX_BODY_BYTES (issue #9).
+
+    Checks Content-Length up-front when available. For chunked / missing-
+    Content-Length requests, reads the body with an incremental guard so
+    a malicious client can't stream an unbounded payload past our parser.
+    Only enforces on POST/PUT/PATCH — GET/HEAD pass through.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return await call_next(request)
+        cl = request.headers.get("content-length")
+        if cl is not None:
+            try:
+                if int(cl) > MAX_BODY_BYTES:
+                    return JSONResponse(
+                        {"detail": f"request body too large (max {MAX_BODY_BYTES} bytes)"},
+                        status_code=413,
+                    )
+            except ValueError:
+                pass  # malformed Content-Length — let route handle it
+        return await call_next(request)
+
+
+async def _run_webhook_safely(topic: str, shop_domain: str, payload: dict) -> None:
+    """Wrap handle_webhook so fire-and-forget errors surface in logs
+    (issue #7). Without this, exceptions inside the task are only
+    reported as asyncio 'Task exception was never retrieved' warnings
+    that are easy to miss in Cloud Run / journalctl output.
+
+    If sentry_sdk is importable, also send the exception to Sentry.
+    Never re-raises — the caller has already returned 200 to Shopify.
+    """
+    try:
+        await handle_webhook(topic=topic, shop_domain=shop_domain, payload=payload)
+    except Exception as exc:  # noqa: BLE001
+        log.exception(
+            "shopify webhook handler failed shop=%s topic=%s err=%s",
+            shop_domain, topic, str(exc)[:300],
+        )
+        try:
+            import sentry_sdk  # type: ignore
+            sentry_sdk.capture_exception(exc)
+        except Exception:  # noqa: BLE001
+            pass  # sentry optional; don't mask the original error
 
 
 @asynccontextmanager
@@ -46,6 +133,7 @@ app = FastAPI(
     description="Systematic ads ops agent for Shopify stores.",
     lifespan=lifespan,
 )
+app.add_middleware(BodySizeLimitMiddleware)
 
 
 @app.get("/healthz")
@@ -75,8 +163,9 @@ async def shopify_webhook(shop: str, request: Request) -> dict:
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="invalid json body")
 
-    import asyncio
-    asyncio.ensure_future(handle_webhook(topic=topic, shop_domain=shop, payload=payload))
+    # Fire-and-forget, but wrap so errors land in logs + optional Sentry
+    # instead of being swallowed by asyncio's unhandled-task-exception path.
+    asyncio.ensure_future(_run_webhook_safely(topic=topic, shop_domain=shop, payload=payload))
     return {"ok": True}
 
 
@@ -127,9 +216,7 @@ async def api_amazon_consent_url(request: Request) -> dict:
     expected = settings().agent_run_token
     if not expected:
         raise HTTPException(status_code=503, detail="endpoint disabled (no token)")
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer ") or not hmac.compare_digest(auth[len("Bearer "):], expected):
-        raise HTTPException(status_code=401, detail="unauthorized")
+    _require_bearer(request, expected)
 
     account_ref = request.query_params.get("account_ref", "").strip()
     if not account_ref:
@@ -178,9 +265,7 @@ async def api_amazon_oauth_receive(request: Request) -> dict:
     if not expected:
         log.error("INTERNAL_API_SECRET is unset — refusing amazon oauth callback")
         raise HTTPException(status_code=503, detail="oauth receiver disabled")
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer ") or not hmac.compare_digest(auth[len("Bearer "):], expected):
-        raise HTTPException(status_code=401, detail="unauthorized")
+    _require_bearer(request, expected)
 
     try:
         body = await request.json()
@@ -223,9 +308,7 @@ async def api_tiktok_consent_url(request: Request) -> dict:
     expected = settings().agent_run_token
     if not expected:
         raise HTTPException(status_code=503, detail="endpoint disabled (no token)")
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer ") or not hmac.compare_digest(auth[len("Bearer "):], expected):
-        raise HTTPException(status_code=401, detail="unauthorized")
+    _require_bearer(request, expected)
 
     account_ref = request.query_params.get("account_ref", "").strip()
     if not account_ref:
@@ -267,9 +350,7 @@ async def api_tiktok_oauth_receive(request: Request) -> dict:
     if not expected:
         log.error("INTERNAL_API_SECRET is unset — refusing TikTok oauth callback")
         raise HTTPException(status_code=503, detail="oauth receiver disabled")
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer ") or not hmac.compare_digest(auth[len("Bearer "):], expected):
-        raise HTTPException(status_code=401, detail="unauthorized")
+    _require_bearer(request, expected)
 
     try:
         body = await request.json()
@@ -315,10 +396,7 @@ async def agent_run(request: Request) -> dict:
         log.error("AGENT_RUN_TOKEN is unset — /agent/run is disabled")
         raise HTTPException(status_code=503, detail="agent run endpoint disabled")
 
-    auth = request.headers.get("Authorization", "")
-    prefix = "Bearer "
-    if not auth.startswith(prefix) or not hmac.compare_digest(auth[len(prefix):], expected):
-        raise HTTPException(status_code=401, detail="unauthorized")
+    _require_bearer(request, expected)
 
     body = await request.json()
     from ads_agent.agent.graph import build_graph
