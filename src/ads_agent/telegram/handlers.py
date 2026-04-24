@@ -36,6 +36,7 @@ async def cmd_help(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "`/alerts <store>` — CPC drift, anomalies, tracking gaps\n"
         "`/amazon <store> [days]` — Amazon Seller + Ads rollup (MAP for ads, Airbyte for Seller)\n"
         "`/amazon_recs <store>` — Amazon's own bid/budget/keyword recs via MAP\n"
+        "`/meta_audit <store> [days]` — D2C Meta ads operator audit (campaign→adset→ad, SCALE/REFRESH/PAUSE/WATCH)\n"
         "`/tiktok <store> [days]` — TikTok advertiser snapshot + paid media totals\n"
         "`/attribution <store> [days]` — Meta → Amazon attribution (sessions-delta model)\n"
         "\n"
@@ -159,6 +160,14 @@ async def cmd_amazon_recs(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
     # days arg is currently unused by amazon_recs_node (recs are always "today"
     # from Amazon's perspective) but pass 30 for consistency + future-proofing.
     await _run_and_reply(update, "amazon_recs", 30, ctx.args or [])
+
+
+async def cmd_meta_audit(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Operator-grade D2C Meta ads audit — campaign → adset → ad with
+    SCALE/REFRESH/PAUSE/WATCH actions per the brand playbook."""
+    if not is_admin(update):
+        return
+    await _run_and_reply(update, "meta_audit", 14, ctx.args or [])
 
 
 async def cmd_tiktok(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
