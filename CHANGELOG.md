@@ -13,7 +13,32 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-24
 
-- **17:00 UTC** — feat(meta_audit): D2C operator-grade Meta ads audit node (`8e4c625`) — 6 files
+- **21:00 UTC** — auto-sync: 2026-04-24 17:30 UTC (`648ea7c`) — 3 files
+        M	src/ads_agent/agent/nodes/ads_leaderboard.py
+        M	src/ads_agent/meta/graph_client.py
+- **17:26 UTC** — fix(meta_audit): pre-flight hygiene + noise-campaign filter (`cd071f2`) — 2 files
+    Two bugs killed the first live run on Ayurpet:
+    1. Pre-flight falsely halted audit. The decomposer was emitting
+       purchase_event_count_7d=-1 and purchase_event_value_sum_7d=-1.0
+       whenever the audit window was not exactly 7 days (default 14d).
+       The analyst correctly read -1 as "pixel broken" and refused to
+       recommend. Fix: always side-pull account_spend(days=7) as an
+       independent 5th parallel call and use those as the hygiene numbers,
+       regardless of the audit's data window. Pixel is only flagged broken
+       when 7d spend > 1000 AND (0 purchases OR 0 value) — a real
+       misconfig signal, not a window-mismatch artefact.
+- **17:26 UTC** — feat(meta_audit): D2C operator-grade Meta ads audit node (`930387e`) — 1 file
+    Shape mirrors the Amazon campaign_analyst pattern we shipped last week:
+    decomposer pulls the account → campaign → adset → ad hierarchy with 14d
+    insights; analyst runs the brand-tuned methodology prompt from
+    playbooks/<brand>.md Section X (meta_audit brief) and emits actions
+    in the four-verb taxonomy: SCALE / REFRESH / PAUSE / WATCH.
+    Fixes the amateur-output class:
+      - Threshold is 3 × target_cpa (conversions-equivalent), not flat ₹4k
+      - Breakeven ROAS is per-brand (1.6 Ayurpet, 2.2 Urban, 2.0 Mokshya)
+      - Creative fatigue (freq>2.5, 7d CTR drop>30%) → REFRESH not PAUSE
+      - ASC+ campaigns judged at campaign level only; no ad-level drill
+- **06:04 UTC** — feat(meta_audit): D2C operator-grade Meta ads audit node (`9bef6ff`) — 5 files
     Shape mirrors the Amazon campaign_analyst pattern we shipped last week:
     decomposer pulls the account → campaign → adset → ad hierarchy with 14d
     insights; analyst runs the brand-tuned methodology prompt from
