@@ -39,7 +39,10 @@ async def ads_leaderboard_node(state: dict) -> dict:
             rows = await ads_for_account(act, days=days)
             all_ads.extend(rows)
         except MetaGraphError as e:
-            # keep going on other accounts
+            import logging
+            logging.getLogger(__name__).warning(
+                "ads_for_account %s failed: %s", act, str(e)[:300]
+            )
             continue
 
     # Filter: only show ads that had any spend in window (active or paused, doesn't matter)

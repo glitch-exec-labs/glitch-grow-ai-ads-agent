@@ -120,22 +120,43 @@ def _sum_purchases(row: dict) -> tuple[int, float]:
     return purchases, purchase_value
 
 
+async def _paginate_get(path: str, base_params: dict, max_rows: int = 1000) -> list[dict]:
+    """GET `path` with cursor pagination until exhausted or max_rows."""
+    out: list[dict] = []
+    params = dict(base_params)
+    cursor: str | None = None
+    while True:
+        if cursor:
+            params["after"] = cursor
+        body = await _get(path, params)
+        out.extend(body.get("data", []))
+        nxt = (body.get("paging") or {}).get("cursors", {}).get("after")
+        if not nxt or len(out) >= max_rows:
+            break
+        cursor = nxt
+    return out
+
+
 async def ads_for_account(ad_account_id: str, days: int = 7, limit: int = 200) -> list[dict]:
     """Return joined ad metadata + ad-level insights for every ad in this account.
 
-    One row per ad, metrics over last N days.
+    One row per ad, metrics over last N days. Paginates both the /ads
+    metadata endpoint and the /insights endpoint — Meta chokes on large
+    accounts with ~>150 ads in a single page when creative{…} is included,
+    so the per-page cap is 50 here.
     """
-    # 1) ad metadata + creative
-    ads_body = await _get(
+    # 1) ad metadata + creative (heavy payload → small page size)
+    ads_rows = await _paginate_get(
         f"{ad_account_id}/ads",
         {
             "fields": "id,name,status,effective_status,created_time,creative{id,thumbnail_url,body,title,object_type,video_id}",
-            "limit": limit,
+            "limit": 50,
         },
+        max_rows=limit,
     )
-    ad_by_id: dict[str, dict] = {a["id"]: a for a in ads_body.get("data", [])}
+    ad_by_id: dict[str, dict] = {a["id"]: a for a in ads_rows}
 
-    # 2) insights at ad level
+    # 2) insights at ad level (paginated; lighter fields → 100 per page)
     if days in (7, 14, 28, 30, 90):
         time_params = {"date_preset": f"last_{days}d"}
     else:
@@ -144,15 +165,17 @@ async def ads_for_account(ad_account_id: str, days: int = 7, limit: int = 200) -
         start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
         time_params = {"time_range": f'{{"since":"{start}","until":"{end}"}}'}
 
-    insights_body = await _get(
+    insight_rows = await _paginate_get(
         f"{ad_account_id}/insights",
         {
             "level": "ad",
             "fields": "ad_id,ad_name,spend,impressions,clicks,ctr,cpc,cpm,frequency,reach,actions,action_values,account_currency",
-            "limit": limit,
+            "limit": 100,
             **time_params,
         },
+        max_rows=limit,
     )
+    insights_body = {"data": insight_rows}
 
     results: list[dict] = []
     from datetime import datetime, timezone
