@@ -60,6 +60,7 @@ def _help_text() -> str:
         "• `/alerts <store>`\n"
         "• `/amazon <store> [days]`\n"
         "• `/amazon_recs <store>`\n"
+        "• `/meta_audit <store> [days]` — D2C Meta audit (SCALE/REFRESH/PAUSE/WATCH)\n"
         "• `/tiktok <store> [days]`\n"
         "• `/tiktok_campaigns <store> [limit]`\n"
         "• `/tiktok_pixels <store> [limit]`\n"
@@ -103,6 +104,7 @@ async def parse_and_run(content: str) -> str | None:
         "alerts":            ("alerts",           "days",  7),
         "amazon":            ("amazon",           "days",  7),
         "amazon_recs":       ("amazon_recs",      "days",  30),
+        "meta_audit":        ("meta_audit",       "days",  14),
         "tiktok":            ("tiktok",           "days",  7),
         "tiktok_campaigns":  ("tiktok_campaigns", "limit", 10),
         "tiktok_pixels":     ("tiktok_pixels",    "limit", 10),

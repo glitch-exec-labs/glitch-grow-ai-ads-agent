@@ -67,6 +67,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("alerts", cmd_alerts))
     app.add_handler(CommandHandler("amazon", cmd_amazon))
     app.add_handler(CommandHandler("amazon_recs", cmd_amazon_recs))
+    app.add_handler(CommandHandler("meta_audit", cmd_meta_audit))
     app.add_handler(CommandHandler("tiktok", cmd_tiktok))
     app.add_handler(CommandHandler("tiktok_campaigns", cmd_tiktok_campaigns))
     app.add_handler(CommandHandler("tiktok_campaign_status", cmd_tiktok_campaign_status))

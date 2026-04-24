@@ -23,8 +23,8 @@ from typing import Any
 
 from ads_agent.meta.graph_client import (
     account_info,
+    ads_for_account_lean,
     adsets_for_account,
-    ads_for_account,
     campaigns_for_account,
 )
 
@@ -205,72 +205,24 @@ async def decompose_meta_account(
         account_info(ad_account_id),
         campaigns_for_account(ad_account_id, days=days),
         adsets_for_account(ad_account_id, days=days),
-        ads_for_account(ad_account_id, days=days, limit=500),
+        ads_for_account_lean(ad_account_id, days=days, limit=1000),
     )
 
     currency = info.get("currency", "?")
 
-    # Build ad rows
     ads_by_adset: dict[str, list[AdRow]] = {}
     for r in ad_rows:
         ad = AdRow(
             ad_id=r["ad_id"], ad_name=r["ad_name"],
-            status=r["status"], effective_status=r["effective_status"],
+            status="", effective_status="",  # lean pull skips these; fine — audit works off numbers
             spend=r["spend"], impressions=r["impressions"],
             clicks=r["clicks"], ctr=r["ctr"], cpc=r["cpc"], cpm=r["cpm"],
             frequency=r["frequency"], reach=r["reach"],
             purchases=r["purchases"], purchase_value=r["purchase_value"],
             roas=r.get("reported_roas", 0.0),
-            days_live=r.get("days_live", 0.0),
-            creative_object_type=(r.get("creative") or {}).get("object_type", ""),
-            creative_video_id=(r.get("creative") or {}).get("video_id", ""),
-            creative_thumbnail=(r.get("creative") or {}).get("thumbnail_url", ""),
+            days_live=0.0,
         )
-        # Ads endpoint doesn't return adset_id directly; we need it.
-        # But `ads_for_account` returns creative via `/ads` endpoint —
-        # which doesn't have adset_id either. Stub: use a placeholder
-        # and rely on adset → campaign join below. We'll set adset_id
-        # from the ad endpoint below via a second lookup map:
-        ads_by_adset.setdefault("_unassigned", []).append(ad)
-
-    # Fetch ad→adset mapping from /ads meta fields
-    from ads_agent.meta.graph_client import _get
-    meta_ads = await _get(
-        f"{ad_account_id}/ads",
-        {"fields": "id,adset_id,campaign_id", "limit": 500},
-    )
-    ad_to_adset: dict[str, str] = {
-        a["id"]: a.get("adset_id", "") for a in meta_ads.get("data", [])
-    }
-    ad_to_campaign: dict[str, str] = {
-        a["id"]: a.get("campaign_id", "") for a in meta_ads.get("data", [])
-    }
-    # Reassign
-    ads_by_adset = {}
-    for ads_list in [ads_by_adset.get("_unassigned", []), []]:
-        pass  # reset
-    ads_by_adset = {}
-    ad_cache = {}
-    for r in ad_rows:
-        ad_cache[r["ad_id"]] = r
-    for ad_id, adset_id in ad_to_adset.items():
-        r = ad_cache.get(ad_id)
-        if not r:
-            continue
-        ad = AdRow(
-            ad_id=r["ad_id"], ad_name=r["ad_name"],
-            status=r["status"], effective_status=r["effective_status"],
-            spend=r["spend"], impressions=r["impressions"],
-            clicks=r["clicks"], ctr=r["ctr"], cpc=r["cpc"], cpm=r["cpm"],
-            frequency=r["frequency"], reach=r["reach"],
-            purchases=r["purchases"], purchase_value=r["purchase_value"],
-            roas=r.get("reported_roas", 0.0),
-            days_live=r.get("days_live", 0.0),
-            creative_object_type=(r.get("creative") or {}).get("object_type", ""),
-            creative_video_id=(r.get("creative") or {}).get("video_id", ""),
-            creative_thumbnail=(r.get("creative") or {}).get("thumbnail_url", ""),
-        )
-        ads_by_adset.setdefault(adset_id, []).append(ad)
+        ads_by_adset.setdefault(r.get("adset_id", ""), []).append(ad)
 
     # Build adset rows
     adsets_by_campaign: dict[str, list[AdSetRow]] = {}
