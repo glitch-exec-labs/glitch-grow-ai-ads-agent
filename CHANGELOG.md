@@ -13,7 +13,18 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-24
 
-- **06:00 UTC** — auto-sync: 2026-04-24 06:00 UTC (`1b00ba5`) — 7 files
+- **17:00 UTC** — feat(meta_audit): D2C operator-grade Meta ads audit node (`8e4c625`) — 6 files
+    Shape mirrors the Amazon campaign_analyst pattern we shipped last week:
+    decomposer pulls the account → campaign → adset → ad hierarchy with 14d
+    insights; analyst runs the brand-tuned methodology prompt from
+    playbooks/<brand>.md Section X (meta_audit brief) and emits actions
+    in the four-verb taxonomy: SCALE / REFRESH / PAUSE / WATCH.
+    Fixes the amateur-output class:
+      - Threshold is 3 × target_cpa (conversions-equivalent), not flat ₹4k
+      - Breakeven ROAS is per-brand (1.6 Ayurpet, 2.2 Urban, 2.0 Mokshya)
+      - Creative fatigue (freq>2.5, 7d CTR drop>30%) → REFRESH not PAUSE
+      - ASC+ campaigns judged at campaign level only; no ad-level drill
+- **06:00 UTC** — auto-sync: 2026-04-24 06:00 UTC (`837da6d`) — 8 files
         A	src/ads_agent/agent/analysis/meta_audit_analyst.py
         A	src/ads_agent/agent/analysis/meta_decomposer.py
         M	src/ads_agent/agent/graph.py
