@@ -11,9 +11,29 @@ Body text (if present) shown as indented sub-bullets.
 
 ---
 
+## 2026-04-25
+
+- **00:00 UTC** — Merge remote-tracking branch 'origin/main' (`72478d8`) — 1 file
+    # Conflicts:
+    #	CHANGELOG.md
+
 ## 2026-04-24
 
-- **21:00 UTC** — auto-sync: 2026-04-24 17:30 UTC (`648ea7c`) — 3 files
+- **21:23 UTC** — fix(server): address issues #7, #8, #9 (`bcca4b7`) — 2 files
+    Three Copilot-flagged issues on src/ads_agent/server.py:
+    ## #7 — Shopify webhook fire-and-forget error tracking
+    Previous: asyncio.ensure_future(handle_webhook(...)) — any exception in
+    handler was swallowed; only surfaced as "Task exception was never
+    retrieved" gc warnings. Risk: silent data loss on order events.
+    Fix: new _run_webhook_safely() wraps the handler, logs structured
+    errors with shop + topic, and forwards to Sentry if sentry_sdk is
+    installed. Never re-raises (we've already 200'd Shopify). 200 is
+    still returned fast — Shopify's 5-second window unaffected.
+    ## #8 — Bearer token parsing hardening (lines 131, 182, 227, 320)
+- **21:15 UTC** — auto-sync: 2026-04-24 17:30 UTC (`7449c95`) — 3 files
+        M	src/ads_agent/agent/nodes/ads_leaderboard.py
+        M	src/ads_agent/meta/graph_client.py
+- **17:30 UTC** — auto-sync: 2026-04-24 17:30 UTC (`d5b2847`) — 3 files
         M	src/ads_agent/agent/nodes/ads_leaderboard.py
         M	src/ads_agent/meta/graph_client.py
 - **17:26 UTC** — fix(meta_audit): pre-flight hygiene + noise-campaign filter (`cd071f2`) — 2 files
