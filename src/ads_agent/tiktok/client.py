@@ -348,3 +348,53 @@ async def list_pixels(
             }
         )
     return {'pixels': pixels, 'page_info': page_info}
+
+
+# Ordered preference for lower-funnel events when picking an optimization_event.
+# First event present in the pixel's `events` list that is also in this tuple
+# wins. Adjust per-brand overrides in the workflow, not here.
+PREFERRED_OPTIMIZATION_EVENTS: tuple[str, ...] = (
+    "PURCHASE",
+    "COMPLETE_PAYMENT",
+    "INITIATE_ORDER",
+    "ADD_BILLING",
+    "ON_WEB_CART",
+    "SHOPPING",
+    "ON_WEB_DETAIL",
+)
+
+
+async def pick_optimization_event(
+    advertiser_id: str,
+    pixel_id: str,
+    *,
+    preference: tuple[str, ...] = PREFERRED_OPTIMIZATION_EVENTS,
+    access_token: str | None = None,
+) -> tuple[str, list[str]]:
+    """Return (chosen_event, all_available_events).
+
+    Looks up the pixel in the advertiser's library and picks the first
+    event in `preference` that appears in the pixel's events. If nothing
+    matches, raises TikTokError — the caller should not guess.
+    """
+    data = await list_pixels(advertiser_id, limit=100, access_token=access_token)
+    match = next((p for p in data.get('pixels', []) if p['pixel_id'] == str(pixel_id)), None)
+    if not match:
+        raise TikTokError(f"pixel {pixel_id} not found under advertiser {advertiser_id}")
+    available_raw = match.get('events') or []
+    # `events` rows may be dicts like {"event": "INITIATE_ORDER", ...}
+    available: list[str] = []
+    for e in available_raw:
+        if isinstance(e, dict):
+            name = str(e.get('event') or e.get('event_name') or '').strip()
+        else:
+            name = str(e).strip()
+        if name:
+            available.append(name)
+    for want in preference:
+        if want in available:
+            return want, available
+    raise TikTokError(
+        f"pixel {pixel_id} has no preferred event; available={available}, "
+        f"preference={list(preference)}"
+    )

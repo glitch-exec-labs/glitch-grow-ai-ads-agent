@@ -31,6 +31,10 @@ from ads_agent.agent.nodes.tiktok_campaign_status import tiktok_campaign_status_
 from ads_agent.agent.nodes.tiktok_campaigns import tiktok_campaigns_node
 from ads_agent.agent.nodes.tiktok_insights import tiktok_insights_node
 from ads_agent.agent.nodes.tiktok_pixels import tiktok_pixels_node
+from ads_agent.agent.nodes.tiktok_port_meta import (
+    tiktok_enable_launch_node,
+    tiktok_port_meta_node,
+)
 from ads_agent.agent.nodes.tracking_audit import tracking_audit_node
 from ads_agent.memory.recall import recall_prior
 
@@ -47,6 +51,16 @@ class AgentState(TypedDict, total=False):
     orders_summary: dict
     reply_text: str
     prior_context: str  # XML <prior_context> block from recall_node, or ''
+    # Meta→TikTok port workflow fields
+    meta_ad_id: str
+    tiktok_slug: str
+    landing_url: str
+    ad_text: str
+    display_name: str
+    daily_budget: float
+    bid_price: float
+    call_to_action: str
+    manifest_id: str
 
 
 async def recall_node(state: AgentState) -> AgentState:
@@ -81,6 +95,8 @@ def _route(state: AgentState) -> str:
         'tiktok_campaign_status': 'tiktok_campaign_status',
         'tiktok_campaign_budget': 'tiktok_campaign_budget',
         'tiktok_pixels': 'tiktok_pixels',
+        'port_meta_to_tiktok': 'tiktok_port_meta',
+        'enable_tiktok_launch': 'tiktok_enable_launch',
     }.get(cmd, 'pull_insights')
 
 
@@ -102,6 +118,8 @@ def build_graph():
     g.add_node('tiktok_campaign_status', tiktok_campaign_status_node)
     g.add_node('tiktok_campaign_budget', tiktok_campaign_budget_node)
     g.add_node('tiktok_pixels', tiktok_pixels_node)
+    g.add_node('tiktok_port_meta', tiktok_port_meta_node)
+    g.add_node('tiktok_enable_launch', tiktok_enable_launch_node)
 
     g.set_entry_point('recall')
     g.add_conditional_edges('recall', _route)
@@ -121,6 +139,8 @@ def build_graph():
         'tiktok_campaign_status',
         'tiktok_campaign_budget',
         'tiktok_pixels',
+        'tiktok_port_meta',
+        'tiktok_enable_launch',
     ):
         g.add_edge(node, END)
     return g.compile()
