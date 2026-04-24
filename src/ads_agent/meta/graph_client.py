@@ -435,6 +435,61 @@ async def adsets_for_account(
     return out
 
 
+async def ads_for_account_lean(
+    ad_account_id: str, days: int = 14, limit: int = 500,
+) -> list[dict]:
+    """Lean ad-level insights for the audit decomposer.
+
+    Unlike `ads_for_account`, does NOT pull creative thumbnails / video_ids
+    (those are fat and the audit doesn't need them). Returns enough to
+    join into adset→campaign hierarchy. Uses /insights directly so
+    adset_id/campaign_id come back in one round-trip. Paginates until
+    exhausted or `limit` ads collected.
+    """
+    out: list[dict] = []
+    url = f"{ad_account_id}/insights"
+    params = {
+        "level": "ad",
+        "fields": "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,"
+                  "spend,impressions,clicks,ctr,cpc,cpm,frequency,reach,"
+                  "actions,action_values,account_currency",
+        "limit": 100,
+        **_time_params(days),
+    }
+    cursor_after: str | None = None
+    while True:
+        if cursor_after:
+            params["after"] = cursor_after
+        body = await _get(url, params)
+        for row in body.get("data", []):
+            spend = float(row.get("spend", 0) or 0)
+            purchases, purchase_value = _sum_purchases(row)
+            out.append({
+                "ad_id": row.get("ad_id"),
+                "ad_name": row.get("ad_name", ""),
+                "adset_id": row.get("adset_id", ""),
+                "adset_name": row.get("adset_name", ""),
+                "campaign_id": row.get("campaign_id", ""),
+                "spend": spend,
+                "impressions": int(row.get("impressions", 0) or 0),
+                "clicks": int(row.get("clicks", 0) or 0),
+                "ctr": float(row.get("ctr", 0) or 0),
+                "cpc": float(row.get("cpc", 0) or 0),
+                "cpm": float(row.get("cpm", 0) or 0),
+                "frequency": float(row.get("frequency", 0) or 0),
+                "reach": int(row.get("reach", 0) or 0),
+                "purchases": purchases,
+                "purchase_value": purchase_value,
+                "reported_roas": (purchase_value / spend) if spend > 0 else 0.0,
+                "account_currency": row.get("account_currency", "?"),
+            })
+        nxt = (body.get("paging") or {}).get("cursors", {}).get("after")
+        if not nxt or len(out) >= limit:
+            break
+        cursor_after = nxt
+    return out
+
+
 async def ad_ctr_trend_7d(ad_id: str) -> dict:
     """Return {ctr_7d, ctr_prev7d, delta_pct} for fatigue-diagnosis.
 
