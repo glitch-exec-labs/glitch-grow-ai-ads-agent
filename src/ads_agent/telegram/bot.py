@@ -36,6 +36,8 @@ from ads_agent.telegram.handlers import (
     cmd_tiktok_campaign_status,
     cmd_tiktok_campaigns,
     cmd_tiktok_pixels,
+    cmd_port_meta_to_tiktok,
+    cmd_enable_tiktok_launch,
     cmd_tracking_audit,
 )
 
@@ -69,6 +71,8 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("tiktok_campaign_status", cmd_tiktok_campaign_status))
     app.add_handler(CommandHandler("tiktok_campaign_budget", cmd_tiktok_campaign_budget))
     app.add_handler(CommandHandler("tiktok_pixels", cmd_tiktok_pixels))
+    app.add_handler(CommandHandler("port_meta_to_tiktok", cmd_port_meta_to_tiktok))
+    app.add_handler(CommandHandler("enable_tiktok_launch", cmd_enable_tiktok_launch))
     app.add_handler(CommandHandler("scan_amazon", cmd_scan_amazon))
     app.add_handler(CommandHandler("attribution", cmd_attribution))
     app.add_handler(CommandHandler("plan", cmd_plan))

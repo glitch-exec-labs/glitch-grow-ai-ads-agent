@@ -43,6 +43,8 @@ async def cmd_help(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "`/plan [store]` — show pending proposals awaiting Approve/Reject\n"
         "`/actions [store]` — recent executed / rejected / failed actions\n"
         "`/scan_amazon <store>` — trigger Amazon waste-reduction scan → proposals\n"
+        "`/port_meta_to_tiktok <meta_ad_id> <tiktok_slug> landing=<url> text=<caption> name=<display>` — port a Meta winner into a DISABLED TikTok Conversions launch\n"
+        "`/enable_tiktok_launch <manifest_id>` — flip a built launch to ENABLE (HITL)\n"
         "\n"
         "*Housekeeping*\n"
         "`/stores` — list configured stores\n"
@@ -259,6 +261,95 @@ async def cmd_tiktok_pixels(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> N
         {"command": "tiktok_pixels", "store_slug": slug, "limit": limit},
         working_text=f"Running /tiktok_pixels {slug} {limit}…",
         log_args={"limit": limit},
+    )
+
+
+async def cmd_port_meta_to_tiktok(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Port a Meta video ad into a DISABLED TikTok Conversions launch.
+
+    Usage:
+      /port_meta_to_tiktok <meta_ad_id> <tiktok_slug> \\
+        landing=<url> text=<ad_text> name=<display_name> \\
+        budget=<daily> bid=<bid> cta=<LEARN_MORE|SHOP_NOW|...>
+
+    Only meta_ad_id, tiktok_slug, landing, and text are required. Everything
+    else has sensible defaults. Output is DISABLED — flip with /enable_tiktok_launch.
+    """
+    if not is_admin(update):
+        return
+    args = ctx.args or []
+    if len(args) < 2:
+        await update.message.reply_text(
+            "usage: `/port_meta_to_tiktok <meta_ad_id> <tiktok_slug> "
+            "landing=<url> text=<ad text> name=<display> "
+            "[budget=50] [bid=10] [cta=LEARN_MORE]`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+    meta_ad_id, tiktok_slug = args[0], args[1]
+
+    kv: dict[str, str] = {}
+    for tok in args[2:]:
+        if "=" in tok:
+            k, _, v = tok.partition("=")
+            kv[k.strip().lower()] = v.strip()
+    landing = kv.get("landing") or ""
+    ad_text = kv.get("text") or ""
+    display = kv.get("name") or "Brand"
+    try:
+        budget = float(kv.get("budget") or 50)
+        bid    = float(kv.get("bid") or 10)
+    except ValueError:
+        await update.message.reply_text("budget/bid must be numeric")
+        return
+    cta = (kv.get("cta") or "LEARN_MORE").upper()
+
+    if not (landing and ad_text):
+        await update.message.reply_text(
+            "landing=... and text=... are required", parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+
+    await _invoke_and_reply(
+        update,
+        {
+            "command": "port_meta_to_tiktok",
+            "meta_ad_id": meta_ad_id,
+            "tiktok_slug": tiktok_slug,
+            "store_slug": tiktok_slug,
+            "landing_url": landing,
+            "ad_text": ad_text,
+            "display_name": display,
+            "daily_budget": budget,
+            "bid_price": bid,
+            "call_to_action": cta,
+        },
+        working_text=f"Porting Meta ad {meta_ad_id} → TikTok/{tiktok_slug} (DISABLED)…",
+        log_args={"meta_ad_id": meta_ad_id, "tiktok_slug": tiktok_slug,
+                  "budget": budget, "bid": bid, "cta": cta},
+    )
+
+
+async def cmd_enable_tiktok_launch(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Flip a previously-built DISABLED launch to ENABLE. HITL gate."""
+    if not is_admin(update):
+        return
+    args = ctx.args or []
+    manifest_id = args[0] if args else ""
+    # store_slug unknown at command level — node reads it from manifest.
+    # Use a placeholder to satisfy the graph recall step.
+    await _invoke_and_reply(
+        update,
+        {
+            "command": "enable_tiktok_launch",
+            "manifest_id": manifest_id,
+            "store_slug": manifest_id.split("__")[0] if "__" in manifest_id else "ayurpet-global",
+        },
+        working_text=(
+            f"Enabling TikTok launch `{manifest_id}`…"
+            if manifest_id else "Listing recent manifests…"
+        ),
+        log_args={"manifest_id": manifest_id},
     )
 
 

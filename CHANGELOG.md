@@ -11,9 +11,19 @@ Body text (if present) shown as indented sub-bullets.
 
 ---
 
+## 2026-04-24
+
+- **03:45 UTC** — auto-sync: 2026-04-24 03:45 UTC (`3bdc671`) — 13 files
+        M	src/ads_agent/agent/graph.py
+        M	src/ads_agent/agent/nodes/tiktok_common.py
+        A	src/ads_agent/agent/nodes/tiktok_port_meta.py
+        A	src/ads_agent/agent/workflows/__init__.py
+        A	src/ads_agent/agent/workflows/port_meta_to_tiktok.py
+        ... (+8 more)
+
 ## 2026-04-23
 
-- **09:15 UTC** — auto-sync: 2026-04-23 09:15 UTC (`51ef8a5`) — 11 files
+- **09:15 UTC** — auto-sync: 2026-04-23 09:15 UTC (`b64e31c`) — 12 files
         M	src/ads_agent/agent/graph.py
         A	src/ads_agent/agent/nodes/tiktok_campaign_budget.py
         A	src/ads_agent/agent/nodes/tiktok_campaign_status.py

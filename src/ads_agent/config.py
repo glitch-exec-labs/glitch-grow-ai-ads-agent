@@ -145,11 +145,21 @@ def _load_store_tiktok_accounts() -> dict[str, dict[str, str]]:
         if not advertiser_id:
             log.warning("STORE_TIKTOK_ACCOUNTS_JSON[%s] missing advertiser_id", slug)
             continue
-        out[slug] = {"advertiser_id": advertiser_id, "country": country}
+        entry: dict = {"advertiser_id": advertiser_id, "country": country}
+        # Optional fields used by the Meta→TikTok port workflow. All are strings
+        # except default_location_ids (list[str]). Missing → workflow prompts.
+        for k in ("identity_id", "identity_type", "pixel_id", "currency"):
+            v = cfg.get(k)
+            if v:
+                entry[k] = str(v).strip()
+        locs = cfg.get("default_location_ids")
+        if isinstance(locs, list):
+            entry["default_location_ids"] = [str(x).strip() for x in locs if x]
+        out[slug] = entry
     return out
 
 
-STORE_TIKTOK_ACCOUNTS: dict[str, dict[str, str]] = _load_store_tiktok_accounts()
+STORE_TIKTOK_ACCOUNTS: dict[str, dict] = _load_store_tiktok_accounts()
 
 
 # ---------------------------------------------------------------------------
