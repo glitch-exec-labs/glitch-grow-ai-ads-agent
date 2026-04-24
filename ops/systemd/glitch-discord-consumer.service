@@ -1,0 +1,21 @@
+[Unit]
+Description=Glitch Grow Ads Agent — Discord inbox consumer
+After=network.target glitch-discord-bot.service
+Wants=glitch-discord-bot.service
+
+[Service]
+Type=simple
+User=support
+Group=support
+WorkingDirectory=/home/support/glitch-grow-ads-agent
+EnvironmentFile=/home/support/glitch-grow-ads-agent/.env
+EnvironmentFile=-/home/support/.config/glitch-discord/env
+Environment="DISCORD_CONSUMER_CHANNELS=grow-ads,glitch-x-ayurpet"
+ExecStart=/home/support/glitch-grow-ads-agent/.venv/bin/python -m ads_agent.discord.inbox_consumer
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

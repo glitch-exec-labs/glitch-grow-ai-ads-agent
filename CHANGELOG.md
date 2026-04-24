@@ -13,7 +13,10 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-24
 
-- **04:00 UTC** — auto-sync: 2026-04-24 04:00 UTC (`5f32d90`) — 4 files
+- **04:15 UTC** — auto-sync: 2026-04-24 04:15 UTC (`688fcd9`) — 2 files
+        A	ops/systemd/glitch-discord-consumer.service
+        A	tests/test_discord_dispatcher.py
+- **04:00 UTC** — auto-sync: 2026-04-24 04:00 UTC (`2be0792`) — 5 files
         A	src/ads_agent/discord/__init__.py
         A	src/ads_agent/discord/dispatcher.py
         A	src/ads_agent/discord/inbox_consumer.py
