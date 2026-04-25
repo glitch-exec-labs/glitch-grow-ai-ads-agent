@@ -11,9 +11,37 @@ Body text (if present) shown as indented sub-bullets.
 
 ---
 
+## 2026-04-27
+
+- **23:30 UTC** — docs: README — dual transport, methodology audits, TikTok, 4-repo fleet (`5065f38`) — 2 files
+    The README claimed "single Telegram surface" and "Telegram-first
+    operator interface" — both stale. Updated to reflect:
+      - Dual transport: same agent core serves Telegram and Discord,
+        proposals dual-post and resolve atomically.
+      - Methodology-driven audits: Health Score 0-100 + category bars +
+        Quick Wins surfacing + stable check-IDs (M01-M35) + 2025
+        platform-change awareness (Andromeda / iOS 14.5 / link-clicks
+        Feb 2025 / OCAPI EOL / Threads GA).
+      - TikTok integration: read commands + Meta→TikTok port workflow
+        (extract winning Meta video, upload, build DISABLED launch with
+
 ## 2026-04-25
 
-- **20:15 UTC** — auto-sync: 2026-04-25 20:15 UTC (`8ef97df`) — 6 files
+- **20:18 UTC** — Merge remote-tracking branch 'origin/main' (`65f0215`) — 1 file
+    # Conflicts:
+    #	CHANGELOG.md
+- **20:18 UTC** — feat(meta_audit): Phase A+B engine — Health Score + Quick Wins + diversity + EMQ (`fd24444`) — 2 files
+    Inspired by AgriciDaniel/claude-ads structure but adapted to our live-API
+    agent. Their model is paste-export-into-Claude; we keep the live-data
+    + HITL execution edge while borrowing the parts that make their reports
+    client-grade: stable check-IDs, weighted health scores, severity/effort
+    sorting, Andromeda awareness.
+    ## Phase A — output structure
+    src/ads_agent/playbook.py: load_ref(name) helper to read brand-agnostic
+    reference docs from playbooks/refs/. Falls back to public repo, then
+    to "" so the analyst's inline prompt remains the safety net.
+    src/ads_agent/agent/analysis/meta_audit_analyst.py:
+- **20:15 UTC** — auto-sync: 2026-04-25 20:15 UTC (`c878ad4`) — 7 files
         A	src/ads_agent/actions/diversity.py
         M	src/ads_agent/agent/analysis/meta_audit_analyst.py
         M	src/ads_agent/agent/analysis/meta_decomposer.py
@@ -21,6 +49,9 @@ Body text (if present) shown as indented sub-bullets.
         A	src/ads_agent/meta/emq.py
         ... (+1 more)
 - **20:00 UTC** — Merge remote-tracking branch 'origin/main' (`74a2994`) — 1 file
+    # Conflicts:
+    #	CHANGELOG.md
+- **00:34 UTC** — Merge remote-tracking branch 'origin/main' (`8a91ff2`) — 1 file
     # Conflicts:
     #	CHANGELOG.md
 - **00:34 UTC** — feat(actions): Discord cutover for proposal approvals — dual-post + shared resolver (`ed3aada`) — 4 files
@@ -64,8 +95,6 @@ Body text (if present) shown as indented sub-bullets.
         M	src/ads_agent/agent/nodes/ads_leaderboard.py
         M	src/ads_agent/meta/graph_client.py
 - **17:30 UTC** — auto-sync: 2026-04-24 17:30 UTC (`d5b2847`) — 3 files
-- **21:00 UTC** — auto-sync: 2026-04-24 17:30 UTC (`648ea7c`) — 3 files
-- **17:30 UTC** — auto-sync: 2026-04-24 17:30 UTC (`f362169`) — 2 files
         M	src/ads_agent/agent/nodes/ads_leaderboard.py
         M	src/ads_agent/meta/graph_client.py
 - **17:26 UTC** — fix(meta_audit): pre-flight hygiene + noise-campaign filter (`cd071f2`) — 2 files
