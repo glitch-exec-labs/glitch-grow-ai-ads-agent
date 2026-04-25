@@ -1,6 +1,6 @@
 # Glitch Grow AI Ads Agent
 
-> **An AI ads agent for Shopify and e-commerce brands that plans, analyzes, executes, and improves ROAS end-to-end** — across Shopify, Meta, and Amazon, from a single Telegram surface.
+> **An AI ads agent for Shopify and e-commerce brands that plans, analyses, executes, and improves ROAS end-to-end** — across Shopify, Meta, Amazon, and TikTok, controllable from Telegram **or** Discord.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![LangGraph](https://img.shields.io/badge/orchestrator-LangGraph-orange)](https://github.com/langchain-ai/langgraph)
@@ -72,56 +72,80 @@ It answers the questions an ad ops manager would otherwise pay ₹50K-2L/month t
 - Every command injects `<prior_context>` from relevant past turns before prompting the LLM — agent starts each decision with "last time we faced X, we did Y, outcome was Z"
 - Nightly consolidation cron scores memories on relevance/frequency/diversity/recency/consolidation and promotes durable lessons to per-brand `MEMORY.md` files loaded as system prompt context
 
-### Telegram-first operator interface
-- Dedicated bot per workspace. Admin-gated (`TELEGRAM_ADMIN_IDS`), rate-limited, webhook-mode
-- Diagnostic commands: `/insights`, `/roas`, `/tracking_audit`, `/ads`, `/creative`, `/ideas`, `/alerts`, `/amazon`, `/attribution`
-- Proactive alerts: CPC drift, match-rate drop > 20% d/d, ROAS drop > 30% w/w, zero-purchase burners, premature-kill bias warnings
-- Daily 07:00 IST digest per store (v2): GMV, spend, ROAS delta, tracking health, agent's queued actions
+### Dual transport: Telegram + Discord
+- Same agent core, two control planes. Diagnostic commands and write-action approvals work from either Telegram (`@GlitchGrowAdsBot`) or Discord (`#grow-ads`, plus per-client channels like `#glitch-x-ayurpet`).
+- Action proposals **dual-post** with Approve/Reject buttons; either side resolves the row atomically and strips buttons on the other (first-click-wins via DB-level constraint).
+- Discord lets clients self-serve audits (`/insights`, `/amazon_recs`, `/meta_audit`) without giving them ops-team access. Per-channel approver allowlists keep write authority scoped.
+
+### Methodology-driven audits, not vibes
+- `/meta_audit` and `/amazon_recs` run a **decomposer** (account → campaign → adset → ad with 14d rollup + concentration analysis) followed by a brand-tuned methodology analyst.
+- Output leads with a **Health Score 0-100** and category bars (Pixel/CAPI 30% · Creative 30% · Structure 20% · Audience 20%), then **Quick Wins** (high-severity × low-effort), then full per-campaign drill.
+- Every recommendation cites a stable check-ID (M01-M35) so week-over-week deltas are tractable.
+- 2025 platform-change awareness baked in: Andromeda creative-diversity (Oct 2025), iOS 14.5 dedup, link-clicks redefinition (Feb 2025), Offline Conversions API EOL, Threads GA, AEM v2.
+
+### TikTok integration
+- Read: `/tiktok`, `/tiktok_campaigns`, `/tiktok_pixels`, `/tiktok_campaign_status`, `/tiktok_campaign_budget`.
+- Write: `/port_meta_to_tiktok <meta_ad_id> <slug>` — extracts a winning Meta video, uploads to TikTok, creates campaign + adset + ad in DISABLED state with the right pixel optimization event auto-picked. `/enable_tiktok_launch <manifest_id>` flips it live after HITL review.
+
+### Per-brand playbook system
+- Tuned thresholds (`breakeven_roas`, `target_roas`, `target_cpa`) live in private playbooks per brand, not hardcoded in the engine. Ayurpet pet-supplements (1.6/2.8 breakeven/target) ≠ Urban apparel (2.2/3.5) ≠ Mokshya (2.0/3.2). Engine is brand-agnostic; calibration ships separately.
+
+### Proactive alerts
+- CPC drift, match-rate drop > 20% d/d, ROAS drop > 30% w/w, zero-purchase burners, premature-kill bias warnings, daily 07:00 IST digest per store.
 
 ---
 
-## Three-repo fleet
+## Four-repo fleet
 
 This agent doesn't hold every integration itself — it delegates per-platform
-work to sibling MCP servers maintained in their own repos. Clean separation
-makes it easy to swap a data source (e.g. Amazon Supermetrics → native LWA)
-without redeploying the agent.
+work to sibling repos. Clean separation makes it easy to swap a data source
+(e.g. Amazon Supermetrics → native LWA) without redeploying the agent.
 
 | Repo | Role | Port | Status |
 |---|---|---|---|
-| **glitch-grow-ai-ads-agent** (this repo) | LangGraph agent, Telegram bot, PostHog attribution, memory | `3110` | v1 live |
+| **glitch-grow-ai-ads-agent** (this repo) | LangGraph agent, Telegram + Discord transports, PostHog attribution, memory | `3110` | v2 live |
 | [glitch-ads-mcp](https://github.com/glitch-exec-labs/glitch-ads-mcp) | Meta Ads (fork of pipeboard's meta-ads-mcp) | `3103` | live |
 | [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) | Amazon Seller Central + Amazon Ads + attribution bridge. Runs in Supermetrics-fallback mode until LWA approval | `3105` | live (fallback mode) |
+| [glitch-discord-bot](https://github.com/glitch-exec-labs/glitch-discord-bot) | Guild slash commands + channel→JSON inbox fanout that the agent's Discord consumer reads | n/a | live |
+
+The agent **reads** TikTok via the official `business-api.tiktok.com` REST
+client (no separate sibling — the SDK we vendor is direct), and **writes**
+to Marketplace Ad Pros (MAP) for Amazon Ads management. ClickUp + Metabase
+are post-processing surfaces driven by ad-hoc scripts under `/tmp/`.
 
 ## Architecture
 
 ```
-                     Telegram (operator)
-                           ▲
-                           │ commands + HITL approvals
-                           ▼
-              ┌────────────────────────────┐
-              │   LangGraph Agent Core     │   recall → route → execute
-              │   ─────────────────────    │   every turn injects <prior_context>
-              │   • planner / router       │   LiteLLM: Gemini Pro → Flash → GPT-4o-mini
-              │   • measurement nodes      │
-              │   • action nodes (v2)      │
-              │   • HITL gates             │
-              │   • memory (pgvector+FTS)  │
-              └──────┬─────────────────────┘
-                     │
-       ┌─────────────┼──────────────────┬────────────────┐
-       ▼             ▼                  ▼                ▼
-  PostHog Cloud  glitch-ads-mcp    Airbyte Cloud    Shopify Admin
-  (events,       (Meta Graph        → Postgres       GraphQL
-   CAPI dedup,   read + CRUD        (Amazon Seller   (orders,
-   identity)     via MCP :3103)     + Ads tables)    Session DB)
-                                           │
-                                           ▼
-                               ads_agent.*_daily_v
-                              (deduped, typed views;
-                               attribution math, SKU P&L,
-                               financials, traffic)
+       Telegram (operator)            Discord (#grow-ads · #glitch-x-<brand>)
+            ▲                                       ▲
+            │ commands + HITL                       │ commands + HITL
+            ▼                                       ▼
+  python-telegram-bot              glitch-discord-bot (sibling)
+  (webhook mode + secret)        ↓ writes JSON to inbox/
+                                   ads_agent.discord.inbox_consumer
+            ▼                                       ▼
+        ┌──────────────────────────────────────────────────┐
+        │           LangGraph Agent Core                   │   recall → route → execute
+        │   ─────────────────────────────────              │   every turn injects <prior_context>
+        │   • planner / router                             │   LiteLLM: Gemini 2.5 Pro / Sonnet / Flash
+        │   • methodology nodes (meta_audit, amazon_recs)  │
+        │   • measurement nodes                            │
+        │   • action nodes + HITL gate                     │
+        │   • cross-platform approval resolver             │
+        │   • memory (pgvector + FTS)                      │
+        └──────┬───────────────────────────────────────────┘
+               │
+   ┌───────────┼─────────────┬──────────────┬──────────────┬───────────────┐
+   ▼           ▼             ▼              ▼              ▼               ▼
+ PostHog   Meta Graph   Airbyte→Postgres   MAP API     TikTok Business   Shopify Admin
+ (events,   (read +     (Amazon Seller     (Amazon     (campaign /        GraphQL
+  CAPI,      CAPI write   + Ads, dedup'd    Ads CRUD,   adset / ad CRUD,  + Session DB
+  identity)  via MCP)     views)            authoritative) creative upload)
+                                  │
+                                  ▼
+                          ads_agent.*_daily_v
+                       (deduped, typed views;
+                        attribution math, SKU P&L)
 ```
 
 **Deployment split:**
@@ -297,32 +321,58 @@ python ops/scripts/register_webhooks.py
 
 ---
 
-## Telegram Commands
+## Commands
 
-Diagnostic / read (shipped):
+All commands work from both Telegram and Discord (in any agent or
+client channel that's wired into `DISCORD_CONSUMER_CHANNELS`). Telegram
+admins are gated by `TELEGRAM_ADMIN_IDS`; Discord approvers by
+`DISCORD_APPROVER_USER_IDS_JSON`.
+
+### Diagnostic / read
 
 | Command | What it does |
 |---|---|
-| `/insights <store> [days]` | GMV, orders, AOV, UTM coverage, repeat rate via PostHog HogQL |
-| `/roas <store> [days]` | True ROAS (Shopify revenue ÷ Meta spend) vs. Meta-reported; summed across linked ad accounts |
-| `/tracking_audit <store> [days]` | LLM-picked remediation recipes for pixel/CAPI gaps and match-rate drift |
+| `/insights <store> [days]` | GMV, orders, AOV, UTM coverage, repeat rate (Shopify + PostHog) |
+| `/roas <store> [days]` | Pipeline / paid-only / Meta-reported / GA4 ground-truth ROAS — four numbers, four perspectives |
+| `/tracking_audit <store> [days]` | LLM-picked remediation recipes for pixel/CAPI gaps |
 | `/ads <store> [days]` | Top-10 ad leaderboard by spend with deep-link to `/creative <ad_id>` |
-| `/creative <ad_id> [store]` | Gemini vision critique of thumbnail + body + metrics — Hook/Body/Offer/Audience/Test-next |
+| `/creative <ad_id> [store]` | Gemini vision critique of thumbnail + body + metrics |
 | `/ideas <store> [days]` | 5 numbered creative briefs based on winning patterns |
-| `/alerts <store>` | CPC drift vs family baseline, spend-up/rev-flat, zero-purchase burners, premature-kill reminders |
-| `/amazon <store> [days]` | Amazon Seller + Amazon Ads rollup per marketplace (direct Airbyte → Postgres, sub-second) |
-| `/attribution <store> [days]` | Meta → Amazon attribution (subtraction model, per-ASIN ROAS, Shopify vs Amazon channel split) |
+| `/alerts <store>` | CPC drift, spend-up/rev-flat, zero-purchase burners, premature-kill reminders |
+| `/amazon <store> [days]` | Amazon Seller + Ads rollup per marketplace |
+| `/attribution <store> [days]` | Meta → Amazon attribution (subtraction model + sessions-delta when data allows) |
 | `/stores` | List all configured storefronts |
 
-Autonomous action (v2, in progress):
+### Methodology-driven audits
 
 | Command | What it does |
 |---|---|
-| `/plan <store>` | Agent's current proposed actions with rationale; approve/reject inline |
-| `/execute <action_id>` | Dry-run a queued action (shows diff before commit) |
-| `/autonomy <store> <threshold>` | Set per-brand autonomy threshold (how much spend agent can move without HITL) |
+| `/meta_audit <store> [days]` | Operator-grade D2C Meta audit — Health Score 0-100 + category bars + Quick Wins + per-campaign drill. Cites check-IDs (M01-M35); aware of Andromeda + iOS 14.5 + Feb 2025 link-click redefinition |
+| `/amazon_recs <store>` | Surgical Amazon SP recommendations via the campaign decomposer + analyst. Returns concrete actions at the right entity level (keyword / product_ad / product_target / campaign) |
 
-All commands require your Telegram user ID to be in `TELEGRAM_ADMIN_IDS`.
+### TikTok
+
+| Command | What it does |
+|---|---|
+| `/tiktok <store> [days]` | Advertiser snapshot + paid media totals |
+| `/tiktok_campaigns <store> [limit]` | List campaigns with status / objective / budget |
+| `/tiktok_pixels <store> [limit]` | List pixels and the events each fires |
+| `/tiktok_campaign_status <store> <campaign_id> <enable\|disable>` | Flip campaign status |
+| `/tiktok_campaign_budget <store> <campaign_id> <amount>` | Change campaign budget |
+| `/port_meta_to_tiktok <meta_ad_id> <slug> landing=<url> text="..." name=<display>` | Extract a winning Meta video and create a DISABLED TikTok Conversions launch with auto-picked optimization event |
+| `/enable_tiktok_launch <manifest_id>` | HITL gate: flip a built TikTok launch live |
+
+### Autonomous action layer (HITL)
+
+| Command | What it does |
+|---|---|
+| `/plan [store]` | Show pending action proposals awaiting Approve/Reject |
+| `/actions [store]` | Recent executed / rejected / failed actions |
+| `/scan_amazon <store>` | Trigger Amazon waste-reduction scan → proposals |
+
+The planner runs every 4 hours; proposals dual-post to Telegram and to
+the brand's Discord client channel. Either side's button click resolves
+the row atomically; the executor runs within 5 minutes after approval.
 
 ---
 
