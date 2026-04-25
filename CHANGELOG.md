@@ -13,7 +13,21 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-25
 
-- **00:30 UTC** — auto-sync: 2026-04-25 00:30 UTC (`78b9ffd`) — 5 files
+- **19:45 UTC** — Merge remote-tracking branch 'origin/main' (`0554ba5`) — 1 file
+    # Conflicts:
+    #	CHANGELOG.md
+- **00:34 UTC** — feat(actions): Discord cutover for proposal approvals — dual-post + shared resolver (`ed3aada`) — 4 files
+    The proposal flow used to be Telegram-only: post_proposal() took an int
+    chat_id, sent to TG, persisted telegram_message_id, and the
+    telegram/callbacks.py button handler resolved approve/reject. The client
+    never saw any of it.
+    This ships the Discord side:
+      - Proposals dual-post to Telegram (legacy operator group) AND Discord
+        (#glitch-x-ayurpet client channel) during a 48h cutover window.
+      - Either platform's Approve/Reject click resolves the row atomically.
+      - The shared resolver edits *both* platforms' messages so the buttons
+        disappear on the side you didn't click.
+- **00:30 UTC** — auto-sync: 2026-04-25 00:30 UTC (`e9bc5c8`) — 6 files
         A	migrations/migrate_agent_actions_discord.sql
         A	src/ads_agent/actions/approval_targets.py
         A	src/ads_agent/actions/discord_notifier.py
@@ -25,6 +39,9 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-24
 
+- **21:24 UTC** — Merge remote-tracking branch 'origin/main' (`6c6fbc6`) — 1 file
+    # Conflicts:
+    #	CHANGELOG.md
 - **21:23 UTC** — fix(server): address issues #7, #8, #9 (`bcca4b7`) — 2 files
     Three Copilot-flagged issues on src/ads_agent/server.py:
     ## #7 — Shopify webhook fire-and-forget error tracking
