@@ -120,21 +120,26 @@ async def post_proposal(
                      prop.target_object_id, e)
             raise
 
-    # 1) Insert (status defaults to pending_approval)
+    # 1) Insert (status defaults to pending_approval). Both platform's
+    # channel ids are nullable; we'll set the message ids after each post.
     async with pool.acquire() as conn:
         action_id = await conn.fetchval(
             """INSERT INTO ads_agent.agent_actions (
                    store_slug, action_kind, target_object_id, target_object_name,
-                   params, rationale, evidence, expected_impact, telegram_chat_id
-               ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8::jsonb,$9)
+                   params, rationale, evidence, expected_impact,
+                   telegram_chat_id, discord_channel_id, approval_platform
+               ) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7::jsonb,$8::jsonb,$9,$10,$11)
                RETURNING id""",
             prop.store_slug, prop.action_kind, prop.target_object_id,
             prop.target_object_name, json.dumps(prop.params),
             prop.rationale, json.dumps(prop.evidence), json.dumps(prop.expected_impact),
-            chat_id,
+            target.telegram_chat_id,
+            target.discord_channel_id,
+            "dual" if target.is_dual else (
+                "discord" if target.discord_channel_id else "telegram"
+            ),
         )
 
-    # 2) Format + send to Telegram
     text = format_telegram_message(
         action_id=action_id,
         store_slug=prop.store_slug,
@@ -146,29 +151,66 @@ async def post_proposal(
         expected_impact=prop.expected_impact,
     )
 
-    body: dict = {}
-    send_error: str = ""
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as c:
-            resp = await c.post(
-                f"{TELEGRAM_API}/bot{_bot_token()}/sendMessage",
-                json={
-                    "chat_id": chat_id,
-                    "text": text,
-                    "parse_mode": "Markdown",
-                    "disable_web_page_preview": True,
-                    "reply_markup": _inline_keyboard(action_id),
-                },
-            )
-        body = resp.json()
-    except Exception as e:  # httpx transport / JSON decode failure
-        send_error = f"transport: {e!r}"
-        body = {"ok": False}
+    # 2) Try each configured platform. Track per-platform success and
+    # update the row with whichever message_ids we got.
+    tg_msg_id: int | None = None
+    tg_err: str = ""
+    dc_msg_id: int | None = None
+    dc_err: str = ""
 
-    if not body.get("ok"):
-        reason = body.get("description") or send_error or "unknown Telegram error"
+    if target.telegram_chat_id is not None:
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as c:
+                resp = await c.post(
+                    f"{TELEGRAM_API}/bot{_bot_token()}/sendMessage",
+                    json={
+                        "chat_id": target.telegram_chat_id,
+                        "text": text,
+                        "parse_mode": "Markdown",
+                        "disable_web_page_preview": True,
+                        "reply_markup": _inline_keyboard(action_id),
+                    },
+                )
+            body = resp.json()
+            if body.get("ok"):
+                tg_msg_id = body["result"]["message_id"]
+            else:
+                tg_err = body.get("description") or "unknown TG error"
+        except Exception as e:
+            tg_err = f"transport: {e!r}"
+
+    if target.discord_channel_id is not None:
+        try:
+            from ads_agent.actions.discord_notifier import (
+                DiscordNotifyError, post_proposal_to_discord,
+            )
+            dc_msg_id = await post_proposal_to_discord(
+                target.discord_channel_id, action_id, text,
+            )
+        except Exception as e:
+            dc_err = f"{type(e).__name__}: {e!r}"
+
+    # 3) Persist whatever message ids we got
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """UPDATE ads_agent.agent_actions
+               SET telegram_message_id=$1, discord_message_id=$2
+               WHERE id=$3""",
+            tg_msg_id, dc_msg_id, action_id,
+        )
+
+    # 4) Did anything land? If every configured platform failed, mark
+    # notify_failed so the planner reproposes next tick (issue #6).
+    landed = []
+    if target.telegram_chat_id is not None and tg_msg_id is not None:
+        landed.append("telegram")
+    if target.discord_channel_id is not None and dc_msg_id is not None:
+        landed.append("discord")
+
+    if not landed:
+        reason = f"telegram={tg_err or 'n/a'} | discord={dc_err or 'n/a'}"
         log.error(
-            "Telegram post failed for action %s: %s — marking notify_failed",
+            "ALL platforms failed for action %s: %s — marking notify_failed",
             action_id, reason,
         )
         async with pool.acquire() as conn:
@@ -177,20 +219,24 @@ async def post_proposal(
                    SET status='notify_failed',
                        result=$1::jsonb
                    WHERE id=$2 AND status='pending_approval'""",
-                json.dumps({"notify_error": str(reason)[:500]}),
+                json.dumps({"notify_error": reason[:500]}),
                 action_id,
             )
         raise TelegramNotifyError(
-            f"Telegram send failed for action {action_id}: {reason}"
+            f"Notify failed on every platform for action {action_id}: {reason}"
         )
 
-    msg_id = body["result"]["message_id"]
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE ads_agent.agent_actions SET telegram_message_id=$1 WHERE id=$2",
-            msg_id, action_id,
+    if (target.telegram_chat_id and not tg_msg_id) or (target.discord_channel_id and not dc_msg_id):
+        # Partial — at least one platform delivered, but log the loser.
+        log.warning(
+            "action %s posted on %s but failed on others: tg=%s dc=%s",
+            action_id, ",".join(landed), tg_err or "ok", dc_err or "ok",
         )
-    log.info("Posted action %s to chat %s as msg %s", action_id, chat_id, msg_id)
+
+    log.info(
+        "Posted action %s on %s (tg_msg=%s, dc_msg=%s)",
+        action_id, ",".join(landed), tg_msg_id, dc_msg_id,
+    )
     return action_id
 
 

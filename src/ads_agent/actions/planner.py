@@ -351,6 +351,16 @@ def _proposal_from_amazon_row(
     return None
 
 
+def _target_for(store_slug: str, chat_id_fallback: int):
+    """Resolve ProposalTarget for store, falling back to chat_id-only if
+    STORE_PROPOSAL_TARGETS_JSON isn't configured for this slug."""
+    from ads_agent.actions.approval_targets import ProposalTarget, proposal_target
+    t = proposal_target(store_slug)
+    if t and t.has_any:
+        return t
+    return ProposalTarget(telegram_chat_id=chat_id_fallback, discord_channel_id=None)
+
+
 async def plan_amazon_for_store(
     pool: asyncpg.Pool, store_slug: str, chat_id: int, *, force: bool = False,
 ) -> int:
@@ -442,7 +452,7 @@ async def plan_amazon_for_store(
         if prop.target_object_id in recent:
             continue  # dedup against recent actions on the same target
         try:
-            await post_proposal(pool, prop, chat_id)
+            await post_proposal(pool, prop, target=_target_for(store_slug, chat_id))
             posted += 1
             recent.add(prop.target_object_id)
         except GuardrailViolation as e:
@@ -481,7 +491,7 @@ async def plan_for_store(pool: asyncpg.Pool, store_slug: str, chat_id: int) -> i
                 if prop is None:
                     continue
                 try:
-                    await post_proposal(pool, prop, chat_id)
+                    await post_proposal(pool, prop, target=_target_for(store_slug, chat_id))
                     posted += 1
                     recent.add(r["adset_id"])  # don't double-propose same target
                     break  # one proposal per adset per planner run
