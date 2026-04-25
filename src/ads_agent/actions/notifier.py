@@ -69,34 +69,39 @@ class TelegramNotifyError(RuntimeError):
 async def post_proposal(
     pool: asyncpg.Pool,
     prop: ActionProposal,
-    chat_id: int,
+    chat_id: int | None = None,    # back-compat — Telegram-only callers
+    *,
+    target=None,                   # ProposalTarget (preferred) — Discord+TG dispatch
 ) -> int:
-    """Insert action row, post to Telegram, return action_id.
+    """Insert action row, post to configured platforms, return action_id.
 
-    Issue #6: if the Telegram send fails for any reason (transient 5xx,
-    network error, bot kicked from chat, rate limit, malformed markdown,
-    etc.), we MUST NOT leave a pending_approval row sitting in the DB with
-    no `telegram_message_id`. The planner's 72h dedup window would then
-    suppress re-proposals for the same target while no human ever sees it.
+    Cutover (2026-04-25): now supports Discord in addition to Telegram via
+    the `target: ProposalTarget` kwarg (see actions.approval_targets). When
+    both telegram_chat_id and discord_channel_id are set, the row is dual-
+    posted; either platform's Approve/Reject click resolves the row and
+    the other platform's message gets its buttons stripped on edit.
 
-    Flow:
-      1. Insert row (status='pending_approval', telegram_message_id=NULL).
-      2. Attempt Telegram sendMessage.
-      3a. On success: UPDATE telegram_message_id=<msg_id>. Row is live.
-      3b. On failure: UPDATE status='notify_failed' and raise
-          TelegramNotifyError. The planner's dedup query filters out
-          `notify_failed` rows so the next planner tick will repropose.
+    Back-compat: legacy callers passing `chat_id: int` keep getting
+    Telegram-only behaviour with no Discord post. New code should pass
+    `target=` instead.
 
-    We still keep the failed row in the table for audit / debugging rather
-    than deleting it.
+    Issue #6 invariant preserved: if EVERY configured platform's send
+    fails, mark the row notify_failed and raise TelegramNotifyError. If
+    at least one platform delivered, the row is live and the action_id
+    is returned. (TelegramNotifyError name kept for API stability;
+    semantically it's now "notify failed on every platform".)
 
-    Pre-write guardrail (2026-04-22): before inserting any row, we check
-    that the proposed action is actually applicable — e.g. a pause
-    proposal is rejected if the target is already paused. See
-    `ads_agent.actions.guardrails`. Failures raise `GuardrailViolation`
-    (a subclass of `TelegramNotifyError` is NOT used — the caller should
-    catch `GuardrailViolation` separately and skip, not retry).
+    Pre-write guardrail still applies: refuses no-op pauses before any
+    DB or network work via assert_pause_applicable().
     """
+    # Resolve target — accept either legacy chat_id int or new target obj
+    from ads_agent.actions.approval_targets import ProposalTarget
+    if target is None:
+        if chat_id is None:
+            raise ValueError("post_proposal needs either chat_id= or target=")
+        target = ProposalTarget(telegram_chat_id=chat_id, discord_channel_id=None)
+    if not target.has_any:
+        raise ValueError("post_proposal: target has no platform configured")
     # 0) Guardrail: reject no-op pauses before any DB/Telegram work.
     fetcher_entry = _PAUSE_STATUS_FETCHERS.get(prop.action_kind)
     if fetcher_entry and fetcher_entry[1] is not None:
