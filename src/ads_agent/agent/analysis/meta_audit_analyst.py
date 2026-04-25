@@ -18,7 +18,7 @@ import re
 
 from ads_agent.agent.analysis.meta_decomposer import MetaAccountHierarchy
 from ads_agent.agent.llm import complete
-from ads_agent.playbook import node_brief
+from ads_agent.playbook import load_ref, node_brief
 
 log = logging.getLogger(__name__)
 
@@ -69,11 +69,41 @@ Then the ACTIONS block (one per rule-qualified recommendation):
 """
 
 
+_HEALTH_RE = re.compile(
+    r"##\s*HEALTH\s*SCORE\s*\n\s*Total[:\s]+(\d{1,3})/100[^\n]*\n"
+    r"\s*Pixel[/CAPI:\s]+(\d{1,3})/100[^\n]*\n"
+    r"\s*Creative[:\s]+(\d{1,3})/100[^\n]*\n"
+    r"\s*Structure[:\s]+(\d{1,3})/100[^\n]*\n"
+    r"\s*Audience[:\s]+(\d{1,3})/100",
+    re.IGNORECASE,
+)
+
+
+def _parse_health(text: str) -> dict:
+    m = _HEALTH_RE.search(text)
+    if not m:
+        return {}
+    total, pixel, creative, structure, audience = (int(g) for g in m.groups())
+    grade = (
+        "A" if total >= 90 else
+        "B" if total >= 80 else
+        "C" if total >= 70 else
+        "D" if total >= 60 else
+        "F"
+    )
+    return {
+        "total": total, "grade": grade,
+        "pixel_capi": pixel, "creative": creative,
+        "structure": structure, "audience": audience,
+    }
+
+
 def _parse_report(text: str) -> dict:
     """Split the markdown report into (narrative_body, parsed actions list)."""
     # Actions block begins at first `### N. verb · label`
     actions_start = re.search(r"(?m)^###\s*\d+\.", text)
     narrative = text[: actions_start.start()].strip() if actions_start else text.strip()
+    health = _parse_health(text)
 
     actions: list[dict] = []
     for block in re.finditer(
@@ -94,11 +124,33 @@ def _parse_report(text: str) -> dict:
             "target_label":    target_label,
             "target_level":    _field("target_level"),
             "target_id":       _field("target_id"),
+            "check_id":        _field("check_id") or "",          # NEW: stable M-id
+            "severity":        (_field("severity") or "medium").lower(),
+            "effort":          (_field("effort") or "medium").lower(),
             "rationale":       _field("rationale"),
             "expected_impact": _field("expected_impact"),
             "safety_check":    _field("safety_check"),
         })
-    return {"diagnosis": narrative, "actions": actions}
+    # Sort actions: severity DESC (critical → low), then effort ASC
+    # (low → high). Stable so the LLM's relative ranking within a tier
+    # is preserved.
+    sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    eff_order = {"low": 0, "medium": 1, "high": 2}
+    actions.sort(key=lambda a: (
+        sev_order.get(a.get("severity", "medium"), 2),
+        eff_order.get(a.get("effort", "medium"), 1),
+    ))
+    quick_wins = [
+        a for a in actions
+        if a.get("severity") in ("critical", "high")
+        and a.get("effort") == "low"
+    ]
+    return {
+        "diagnosis": narrative,
+        "actions": actions,
+        "quick_wins": quick_wins,
+        "health": health,
+    }
 
 
 async def audit_meta_account(
@@ -118,6 +170,30 @@ async def audit_meta_account(
     if not methodology:
         log.warning("no meta_audit brief for brand %r — using fallback", brand)
         methodology = _FALLBACK_METHODOLOGY
+
+    # Inject the canonical 30-check checklist + 2025 platform-change context
+    # as ground-truth references the analyst MUST cite by check-ID.
+    checklist = load_ref("meta-audit-checklist")
+    changes   = load_ref("2025-platform-changes")
+    refs_block = ""
+    if checklist:
+        refs_block += (
+            "\n\n# REFERENCE — meta audit checklist (cite check-IDs)\n"
+            "Every action you propose MUST cite at least one check-ID from "
+            "this checklist (e.g. M01, M15, M24). The check-ID goes on the "
+            "`- check_id:` line of each action block.\n\n"
+            + checklist
+        )
+    if changes:
+        refs_block += (
+            "\n\n# REFERENCE — 2025 platform changes (cite when relevant)\n"
+            "When a finding intersects a 2025 platform change (Andromeda, "
+            "iOS 14.5 dedup, link-click redefinition, OCAPI EOL, AEM v2, "
+            "Threads), cite the change in the rationale BEFORE recommending "
+            "structural fixes — many CTR/ROAS drops are metric redefinitions, "
+            "not real performance regressions.\n\n"
+            + changes
+        )
 
     payload = hierarchy.to_dict()
     # Trim creative thumbnail URLs (they can be huge) — not needed for the
