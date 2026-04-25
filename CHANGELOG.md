@@ -13,7 +13,13 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-25
 
-- **00:00 UTC** — Merge remote-tracking branch 'origin/main' (`72478d8`) — 1 file
+- **00:30 UTC** — auto-sync: 2026-04-25 00:30 UTC (`78b9ffd`) — 5 files
+        A	migrations/migrate_agent_actions_discord.sql
+        A	src/ads_agent/actions/approval_targets.py
+        A	src/ads_agent/actions/discord_notifier.py
+        M	src/ads_agent/actions/notifier.py
+        A	src/ads_agent/actions/resolver.py
+- **00:15 UTC** — Merge remote-tracking branch 'origin/main' (`7245cf6`) — 1 file
     # Conflicts:
     #	CHANGELOG.md
 
