@@ -102,6 +102,45 @@ async def meta_audit_node(state: dict) -> dict:
         f"spend {hierarchy.summary.spend:,.0f} {hierarchy.summary.currency} · "
         f"{hierarchy.summary.purchases} purchases · "
         f"blended ROAS {hierarchy.summary.blended_roas:.2f}×\n"
-        f"_methodology: playbooks/{_brand_for(slug)}.md · Section X_\n\n"
+        f"_methodology: playbooks/{_brand_for(slug)}.md · Section X "
+        f"(refs/meta-audit-checklist.md · refs/2025-platform-changes.md)_\n\n"
     )
-    return {**state, "reply_text": header + body}
+
+    # Health Score banner — terse, scannable
+    health = report.get("health") or {}
+    health_banner = ""
+    if health:
+        def bar(score: int) -> str:
+            filled = round(score / 10)
+            return "█" * filled + "░" * (10 - filled)
+        health_banner = (
+            f"*Health: {health['total']}/100 · Grade {health['grade']}*\n"
+            f"```\n"
+            f"Pixel/CAPI {health['pixel_capi']:>3}/100  {bar(health['pixel_capi'])}  (30%)\n"
+            f"Creative   {health['creative']:>3}/100  {bar(health['creative'])}  (30%)\n"
+            f"Structure  {health['structure']:>3}/100  {bar(health['structure'])}  (20%)\n"
+            f"Audience   {health['audience']:>3}/100  {bar(health['audience'])}  (20%)\n"
+            f"```\n"
+        )
+
+    # Quick Wins — high-severity + low-effort, surfaced before the full report
+    qw = report.get("quick_wins") or []
+    quick_wins_block = ""
+    if qw:
+        lines = ["*Quick Wins (high-severity × low-effort):*"]
+        for i, a in enumerate(qw[:5], 1):
+            label = (a.get("target_label") or "?")[:60]
+            check = (a.get("check_id") or "").strip()
+            verb  = a.get("action_kind", "?")
+            impact = (a.get("expected_impact") or "").strip()
+            lines.append(
+                f"  {i}. `{verb}` · {label}"
+                + (f" · `{check}`" if check else "")
+                + (f" → {impact[:80]}" if impact else "")
+            )
+        quick_wins_block = "\n".join(lines) + "\n\n"
+
+    return {
+        **state,
+        "reply_text": header + health_banner + quick_wins_block + body,
+    }

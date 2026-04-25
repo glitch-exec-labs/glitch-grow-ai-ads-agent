@@ -151,6 +151,9 @@ class PreFlight:
     pixel_hygiene_ok: bool
     asc_plus_campaign_count: int
     manual_campaign_count: int
+    # M04 — Event Match Quality for Purchase (None if not measured)
+    emq_purchase_score: float | None = None
+    emq_detail: str = ""
 
 
 @dataclass
@@ -159,6 +162,8 @@ class MetaAccountHierarchy:
     pre_flight: PreFlight
     campaigns: list[CampaignRow] = field(default_factory=list)
     skipped_noise: dict = field(default_factory=dict)   # {count, total_spend, reason}
+    # M15 — Andromeda creative-similarity diagnostic over active ads
+    creative_diversity: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -342,12 +347,29 @@ async def decompose_meta_account(
         ad_account_id, days, len(significant), dropped_count, dropped_spend,
         summary.n_adsets, summary.n_ads, time.time() - t0,
     )
+    # M15 — creative diversity score across the ads we actually analysed
+    from ads_agent.actions.diversity import diversity_report
+    flat_ads: list[dict] = []
+    for c in significant:
+        for s in c.ad_sets:
+            for a in s.ads:
+                if a.spend > 0 or a.impressions > 0:
+                    flat_ads.append({
+                        "ad_id": a.ad_id, "ad_name": a.ad_name,
+                        "creative": {
+                            "title": "",  # lean pull doesn't carry these
+                            "body":  "",
+                        },
+                    })
+    diversity = diversity_report(flat_ads) if flat_ads else {}
+
     return MetaAccountHierarchy(
         summary=summary, pre_flight=pre, campaigns=significant,
         skipped_noise={
             "count": dropped_count, "total_spend": round(dropped_spend, 2),
             "reason": f"spend < {noise_floor:.0f} {currency} and 0 purchases",
         },
+        creative_diversity=diversity,
     )
 
 

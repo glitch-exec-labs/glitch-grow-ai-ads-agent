@@ -49,6 +49,28 @@ def _resolve(brand: str) -> Path:
 PLAYBOOK_DIR = _PRIVATE_PLAYBOOK_DIR or _PUBLIC_PLAYBOOK_DIR
 
 
+def load_ref(name: str) -> str:
+    """Load a brand-agnostic reference document (playbooks/refs/<name>.md).
+
+    Used by audit analysts to cite stable check IDs (M01-M50) and
+    2025 platform-change context. Looks in the private package first,
+    falls back to the public repo, then to "" so the caller's inline
+    prompt remains the safety net.
+    """
+    candidates: list[Path] = []
+    if _PRIVATE_PLAYBOOK_DIR is not None:
+        candidates.append(_PRIVATE_PLAYBOOK_DIR / "refs" / f"{name}.md")
+    candidates.append(_PUBLIC_PLAYBOOK_DIR / "refs" / f"{name}.md")
+    for p in candidates:
+        if p.exists():
+            try:
+                return p.read_text()
+            except Exception as e:  # noqa: BLE001
+                log.warning("load_ref(%s) read failed: %s", name, e)
+                return ""
+    return ""
+
+
 @lru_cache(maxsize=8)
 def load_raw(brand: str = "ayurpet") -> str:
     """Return the raw markdown of a brand's playbook."""
