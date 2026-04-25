@@ -329,6 +329,22 @@ async def decompose_meta_account(
         or (h7_purch > 0 and h7_value > 0)
     )
     asc = sum(1 for c in campaigns if c.is_asc_plus)
+
+    # M04 EMQ — best-effort fetch, graceful degradation if scope missing
+    emq_score: float | None = None
+    emq_detail = ""
+    try:
+        from ads_agent.meta.emq import fetch_emq
+        # Pixel id is per-store, not per-account — but we don't have it
+        # threaded here yet. Pass None so emq.py returns the operator-
+        # check guidance.
+        # (Future: take pixel_id as decompose_meta_account argument.)
+        reading = await fetch_emq(None)
+        emq_score = reading.score
+        emq_detail = reading.detail
+    except Exception as e:  # noqa: BLE001
+        emq_detail = f"EMQ check failed: {e}"
+
     pre = PreFlight(
         attribution_window="7d_click (default)",
         days_window=days,
@@ -339,6 +355,8 @@ async def decompose_meta_account(
         pixel_hygiene_ok=pixel_ok,
         asc_plus_campaign_count=asc,
         manual_campaign_count=len(campaigns) - asc,
+        emq_purchase_score=emq_score,
+        emq_detail=emq_detail,
     )
 
     log.info(
