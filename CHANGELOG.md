@@ -11,9 +11,24 @@ Body text (if present) shown as indented sub-bullets.
 
 ---
 
+## 2026-04-28
+
+- **02:00 UTC** — Merge remote-tracking branch 'origin/main' (`04740dc`) — 1 file
+
 ## 2026-04-27
 
-- **23:30 UTC** — docs: README — dual transport, methodology audits, TikTok, 4-repo fleet (`5065f38`) — 2 files
+- **23:57 UTC** — feat(meta_audit): destination tagging + Amazon halo data — engine-neutral (`31b14c4`) — 5 files
+    Engine-level capability. Methodology (M40 / RECLAIM verb) lives in the
+    Ayurpet playbook brief only — other brands see the data but their
+    briefs don't reference it, so behaviour is unchanged.
+    ## What the engine now produces
+      - AdRow.destination       — amazon | shopify-ind | shopify-global | other
+      - AdRow.destination_url   — resolved final URL (follows amzn.eu/d/* short links)
+      - AdRow.target_asin       — parsed B0XXXXXXXX ASIN when destination = amazon
+      - hierarchy.destination_mix — spend/purchases/meta-ROAS per destination bucket
+      - hierarchy.amazon_halo   — INR-normalised cross-channel halo from
+                                  ads_agent.amazon_attribution_daily_v
+- **23:45 UTC** — docs: README — dual transport, methodology audits, TikTok, 4-repo fleet (`94f645a`) — 2 files
     The README claimed "single Telegram surface" and "Telegram-first
     operator interface" — both stale. Updated to reflect:
       - Dual transport: same agent core serves Telegram and Discord,
@@ -27,6 +42,17 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-25
 
+- **20:27 UTC** — docs: README — dual transport, methodology audits, TikTok, 4-repo fleet (`eecba7d`) — 1 file
+    The README claimed "single Telegram surface" and "Telegram-first
+    operator interface" — both stale. Updated to reflect:
+      - Dual transport: same agent core serves Telegram and Discord,
+        proposals dual-post and resolve atomically.
+      - Methodology-driven audits: Health Score 0-100 + category bars +
+        Quick Wins surfacing + stable check-IDs (M01-M35) + 2025
+        platform-change awareness (Andromeda / iOS 14.5 / link-clicks
+        Feb 2025 / OCAPI EOL / Threads GA).
+      - TikTok integration: read commands + Meta→TikTok port workflow
+        (extract winning Meta video, upload, build DISABLED launch with
 - **20:18 UTC** — Merge remote-tracking branch 'origin/main' (`65f0215`) — 1 file
     # Conflicts:
     #	CHANGELOG.md
