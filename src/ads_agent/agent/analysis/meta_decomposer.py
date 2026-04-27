@@ -53,6 +53,11 @@ class AdRow:
     creative_object_type: str = ""
     creative_video_id: str = ""
     creative_thumbnail: str = ""
+    # Destination tagging — engine-level, brand-neutral. The methodology
+    # for what to do with these tags lives per-brand in the playbook.
+    destination: str = "unknown"   # amazon | shopify-ind | shopify-global | shopify-other | other | unknown
+    destination_url: str = ""
+    target_asin: str = ""
 
 
 @dataclass
@@ -164,6 +169,13 @@ class MetaAccountHierarchy:
     skipped_noise: dict = field(default_factory=dict)   # {count, total_spend, reason}
     # M15 — Andromeda creative-similarity diagnostic over active ads
     creative_diversity: dict = field(default_factory=dict)
+    # Destination-mix breakdown across the analysed ads (engine-level data)
+    destination_mix: dict = field(default_factory=dict)
+    # Amazon halo at account + per-ASIN level. Populated only when the
+    # store has STORE_MAP_ACCOUNTS configured (today: Ayurpet only).
+    # Empty dict for brands without — analyst then ignores the halo
+    # rules and applies the standard Meta-ROAS methodology.
+    amazon_halo: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -202,24 +214,47 @@ def _mk_concentration(ads: list[AdRow], campaign_revenue: float) -> Concentratio
 
 async def decompose_meta_account(
     ad_account_id: str, *, days: int = 14, noise_floor: float = 500.0,
+    store_slug: str | None = None,
 ) -> MetaAccountHierarchy:
-    """Three Graph API calls (campaigns + adsets + ads) + one account_info,
-    joined in Python. Total runtime typically 2–6s for an account with
-    <50 campaigns and <500 ads.
+    """Parallel Graph API pulls + per-ad destination tagging + Amazon
+    halo lookup (when store_slug is configured for MAP). Total runtime
+    typically 4–8s for an account with <50 campaigns and <500 ads.
+
+    `store_slug` is the agent's store key — used to look up
+    STORE_MAP_ACCOUNTS for the Amazon halo. Pass None to skip the halo
+    pull entirely (engine stays brand-neutral; Ayurpet's audit gets the
+    halo, others see an empty dict).
     """
     t0 = time.time()
-    info, camp_rows, adset_rows, ad_rows, hygiene_7d = await _parallel(
+    from ads_agent.meta.graph_client import ad_destinations_for_account
+    info, camp_rows, adset_rows, ad_rows, hygiene_7d, dest_map = await _parallel(
         account_info(ad_account_id),
         campaigns_for_account(ad_account_id, days=days),
         adsets_for_account(ad_account_id, days=days),
         ads_for_account_lean(ad_account_id, days=days, limit=1000),
         account_spend(ad_account_id, days=7),
+        ad_destinations_for_account(ad_account_id, limit=1000),
     )
 
     currency = info.get("currency", "?")
 
+    # Resolve any short links (amzn.eu/d/...) once per unique URL — small
+    # set typically (<5), bounded; failures fall back to the original URL.
+    short_links = {
+        u for u in dest_map.values()
+        if u and ("amzn.eu" in u or "amzn.to" in u)
+    }
+    resolved: dict[str, str] = {}
+    for u in short_links:
+        resolved[u] = await _resolve_short_url(u)
+
+    from ads_agent.meta.destinations import classify_destination, parse_asin
+
     ads_by_adset: dict[str, list[AdRow]] = {}
     for r in ad_rows:
+        raw_dest = dest_map.get(r["ad_id"], "") or ""
+        # Use resolved URL when we followed a short link; else raw
+        eff_dest = resolved.get(raw_dest, raw_dest)
         ad = AdRow(
             ad_id=r["ad_id"], ad_name=r["ad_name"],
             status="", effective_status="",  # lean pull skips these; fine — audit works off numbers
@@ -229,6 +264,9 @@ async def decompose_meta_account(
             purchases=r["purchases"], purchase_value=r["purchase_value"],
             roas=r.get("reported_roas", 0.0),
             days_live=0.0,
+            destination=classify_destination(eff_dest),
+            destination_url=eff_dest,
+            target_asin=parse_asin(eff_dest) or "",
         )
         ads_by_adset.setdefault(r.get("adset_id", ""), []).append(ad)
 
@@ -381,6 +419,35 @@ async def decompose_meta_account(
                     })
     diversity = diversity_report(flat_ads) if flat_ads else {}
 
+    # Destination mix across the campaigns we kept (engine-level, useful
+    # for any brand to see at a glance — e.g. "11% of spend points at
+    # Amazon"). Computed from AdRow.destination + AdRow.spend.
+    destination_mix: dict = {}
+    for c in significant:
+        for s in c.ad_sets:
+            for a in s.ads:
+                if a.spend <= 0:
+                    continue
+                d = destination_mix.setdefault(
+                    a.destination,
+                    {"ads": 0, "spend": 0.0, "purchases": 0, "revenue": 0.0},
+                )
+                d["ads"] += 1
+                d["spend"] += a.spend
+                d["purchases"] += a.purchases
+                d["revenue"] += a.purchase_value
+    for d in destination_mix.values():
+        d["spend"] = round(d["spend"], 2)
+        d["revenue"] = round(d["revenue"], 2)
+        d["meta_reported_roas"] = round(
+            (d["revenue"] / d["spend"]) if d["spend"] > 0 else 0.0, 2,
+        )
+
+    # Amazon halo — only fires for slugs configured in STORE_MAP_ACCOUNTS
+    # (today: ayurpet-ind, ayurpet-global). Other brands get an empty dict
+    # and their analyst prompt won't reference the halo at all.
+    halo = await _amazon_halo_for_slug(store_slug, days)
+
     return MetaAccountHierarchy(
         summary=summary, pre_flight=pre, campaigns=significant,
         skipped_noise={
@@ -388,9 +455,148 @@ async def decompose_meta_account(
             "reason": f"spend < {noise_floor:.0f} {currency} and 0 purchases",
         },
         creative_diversity=diversity,
+        destination_mix=destination_mix,
+        amazon_halo=halo,
     )
 
 
 async def _parallel(*coros):
     import asyncio
     return await asyncio.gather(*coros)
+
+
+async def _resolve_short_url(url: str) -> str:
+    """Follow `amzn.eu/d/<short>` (and similar) one redirect to a real
+    `amazon.<tld>/dp/<ASIN>` URL. Best-effort, 5s timeout, swallows
+    exceptions — falls back to the original URL on any failure."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=False) as c:
+            r = await c.head(url, headers={"User-Agent": "Mozilla/5.0"})
+            loc = r.headers.get("location") or ""
+            return loc or url
+    except Exception:  # noqa: BLE001
+        return url
+
+
+async def _amazon_halo_for_slug(store_slug: str | None, days: int) -> dict:
+    """Pull Meta→Amazon halo for a store at account + per-ASIN level.
+
+    Empty dict if the store isn't configured for MAP (i.e. no Amazon
+    integration). Today this fires for Ayurpet IND + Global; other
+    brands return {} and the analyst doesn't see this block at all.
+
+    Reads from `ads_agent.amazon_attribution_daily_v` which is the same
+    view the /attribution node consumes, so numbers are consistent.
+    """
+    if not store_slug:
+        return {}
+    try:
+        from ads_agent.config import STORE_MAP_ACCOUNTS, settings
+    except Exception:
+        return {}
+    if store_slug not in STORE_MAP_ACCOUNTS:
+        return {}
+
+    try:
+        import asyncpg
+        conn = await asyncpg.connect(settings().postgres_insights_ro_url)
+    except Exception as e:  # noqa: BLE001
+        log.warning("amazon_halo: pg connect failed: %s", e)
+        return {}
+
+    try:
+        # meta_attributed_gross_inr is the ALREADY-INR-NORMALISED column the
+        # attribution view exposes; meta_spend is also INR. Using the
+        # native-currency `meta_attributed_gross` (e.g. AED for ayurpet-global)
+        # against an INR spend gives a fake near-zero halo. INR_INR matters.
+        agg = await conn.fetchrow(
+            """SELECT
+                   SUM(amz_orders)                  AS amz_orders,
+                   SUM(amz_gross)                   AS amz_gross,
+                   SUM(sp_orders)                   AS sp_orders,
+                   SUM(sp_sales1d)                  AS sp_sales,
+                   SUM(meta_spend)                  AS meta_spend,
+                   SUM(meta_attributed_orders)      AS meta_orders,
+                   SUM(meta_attributed_gross)       AS meta_gross_native,
+                   SUM(meta_attributed_gross_inr)   AS meta_gross_inr,
+                   MAX(currency)                    AS currency
+               FROM ads_agent.amazon_attribution_daily_v
+               WHERE store_slug = $1
+                 AND date > (CURRENT_DATE - ($2::int * INTERVAL '1 day'))""",
+            store_slug, days,
+        )
+        per_asin = await conn.fetch(
+            """SELECT asin,
+                      SUM(meta_spend)                  AS meta_spend,
+                      SUM(meta_clicks)                 AS meta_clicks,
+                      SUM(meta_attributed_orders)      AS meta_orders,
+                      SUM(meta_attributed_gross)       AS meta_gross_native,
+                      SUM(meta_attributed_gross_inr)   AS meta_gross_inr
+               FROM ads_agent.amazon_attribution_daily_v
+               WHERE store_slug = $1
+                 AND date > (CURRENT_DATE - ($2::int * INTERVAL '1 day'))
+                 AND asin IS NOT NULL
+                 AND meta_spend > 0
+               GROUP BY asin
+               ORDER BY meta_spend DESC""",
+            store_slug, days,
+        )
+    finally:
+        await conn.close()
+
+    if not agg or not agg["meta_spend"]:
+        return {}
+
+    meta_spend       = float(agg["meta_spend"] or 0)            # INR
+    meta_orders      = int(agg["meta_orders"] or 0)
+    meta_gross_inr   = float(agg["meta_gross_inr"] or 0)         # INR-normalised
+    meta_gross_native= float(agg["meta_gross_native"] or 0)
+    sp_orders        = int(agg["sp_orders"] or 0)
+    sp_sales         = float(agg["sp_sales"] or 0)               # native (AED for AE)
+    native_currency  = agg["currency"] or "?"
+    # Subtraction-model halo (upper bound). Method 1 from /attribution.
+    incremental_orders = max(0, meta_orders - sp_orders)
+    # Both numerator and denominator must be in the same currency to be
+    # comparable. meta_spend is INR; meta_gross_inr is INR; halo_roas is
+    # therefore a pure ratio.
+    incremental_gross_inr = max(0.0, meta_gross_inr)
+    halo_roas = (incremental_gross_inr / meta_spend) if meta_spend > 0 else 0.0
+
+    return {
+        "currency_native": native_currency,
+        "currency_normalised": "INR",
+        "days": days,
+        "method": "subtraction (Meta-attributed Amazon orders, INR-normalised)",
+        "meta_spend_inr":               round(meta_spend, 2),
+        "meta_attributed_orders":       meta_orders,
+        "meta_attributed_gross_native": round(meta_gross_native, 2),
+        "meta_attributed_gross_inr":    round(meta_gross_inr, 2),
+        "sp_orders":                    sp_orders,
+        "sp_sales_native":              round(sp_sales, 2),
+        "incremental_orders":           incremental_orders,
+        "halo_roas":                    round(halo_roas, 2),
+        "per_asin": [
+            {
+                "asin": r["asin"],
+                "meta_spend_inr":   round(float(r["meta_spend"] or 0), 2),
+                "meta_clicks":      int(r["meta_clicks"] or 0),
+                "meta_orders":      int(r["meta_orders"] or 0),
+                "meta_gross_native": round(float(r["meta_gross_native"] or 0), 2),
+                "meta_gross_inr":   round(float(r["meta_gross_inr"] or 0), 2),
+                "halo_roas":        round(
+                    (float(r["meta_gross_inr"] or 0) / float(r["meta_spend"] or 1))
+                    if float(r["meta_spend"] or 0) > 0 else 0.0,
+                    2,
+                ),
+            }
+            for r in per_asin
+        ],
+        "note": (
+            "Meta has no visibility into Amazon orders, so any ad whose "
+            "destination is amazon.* will show meta-reported ROAS of ~0. "
+            "For Amazon-destined ads, USE halo_roas (or per_asin[i].halo_roas) "
+            "as the truth, NOT the ad's meta-reported ROAS. All gross figures "
+            "are INR-normalised so halo_roas is comparable across IN + AE markets."
+        ),
+    }

@@ -458,6 +458,37 @@ async def adsets_for_account(
     return out
 
 
+async def ad_destinations_for_account(ad_account_id: str, limit: int = 500) -> dict[str, str]:
+    """One slim call to /{ad_account}/ads to grab every ad's destination URL.
+
+    Returned dict: {ad_id: destination_url_or_empty}. Used by the audit
+    decomposer to tag each AdRow with destination + ASIN. Single call,
+    creative subfields only — much cheaper than the full /ads pull that
+    triggered "reduce data" 400s before.
+    """
+    out: dict[str, str] = {}
+    cursor_after: str | None = None
+    while True:
+        params = {
+            "fields": "id,creative{object_url,object_story_spec{"
+                      "video_data{call_to_action{value{link}}},"
+                      "link_data{link}},asset_feed_spec{link_urls}}",
+            "limit": min(limit, 100),
+        }
+        if cursor_after:
+            params["after"] = cursor_after
+        body = await _get(f"{ad_account_id}/ads", params)
+        from ads_agent.meta.destinations import extract_destination_link
+        for row in body.get("data", []):
+            link = extract_destination_link(row.get("creative") or {})
+            out[str(row.get("id", ""))] = link or ""
+        nxt = (body.get("paging") or {}).get("cursors", {}).get("after")
+        if not nxt or len(out) >= limit:
+            break
+        cursor_after = nxt
+    return out
+
+
 async def ads_for_account_lean(
     ad_account_id: str, days: int = 14, limit: int = 500,
 ) -> list[dict]:
