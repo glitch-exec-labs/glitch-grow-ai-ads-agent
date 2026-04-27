@@ -55,7 +55,9 @@ async def meta_audit_node(state: dict) -> dict:
         }
 
     try:
-        hierarchy = await decompose_meta_account(ad_account_id, days=days)
+        hierarchy = await decompose_meta_account(
+            ad_account_id, days=days, store_slug=slug,
+        )
     except MetaGraphError as e:
         return {**state, "reply_text": f"*{store.brand}* · Meta audit failed at decompose: `{e}`"}
     except Exception as e:  # noqa: BLE001
