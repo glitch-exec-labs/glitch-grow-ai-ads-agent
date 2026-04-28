@@ -11,15 +11,31 @@ Body text (if present) shown as indented sub-bullets.
 
 ---
 
+## 2026-04-29
+
+- **05:15 UTC** — Merge remote-tracking branch 'origin/main' (`844aee7`) — 1 file
+
 ## 2026-04-28
 
-- **22:15 UTC** — auto-sync: 2026-04-28 22:15 UTC (`34f886f`) — 5 files
+- **22:22 UTC** — feat(amazon): migrate from MAP to native Amazon Ads API (LWA OAuth) (`0f67f22`) — 8 files
+    The MAP (Marketplace Ad Pros) Bearer-auth proxy is gone. All Amazon
+    Ads reads + writes now go through native LWA OAuth tokens stored in
+    ads_agent.amazon_oauth_tokens. Token cached on the row, profile_ids
+    cached at OAuth time, access tokens refreshed on demand (1h TTL).
+    ## New modules
+    src/ads_agent/amazon/ads_api.py
+      - profile_id_for(slug) — slug → Amazon Ads profileId resolver via
+        AMAZON_ACCOUNTS_JSON marketplace mapping. Cached in-process.
+      - list_sp_campaigns / list_sp_ad_groups / list_sp_keywords /
+        list_sp_targets / list_sp_product_ads / list_sp_negative_keywords
+- **22:15 UTC** — auto-sync: 2026-04-28 22:15 UTC (`ddab4b3`) — 6 files
         M	src/ads_agent/agent/analysis/campaign_decomposer.py
         M	src/ads_agent/agent/nodes/amazon_insights.py
         M	src/ads_agent/agent/nodes/amazon_recs.py
         A	src/ads_agent/amazon/ads_api.py
         A	src/ads_agent/amazon/mutations.py
 - **22:00 UTC** — Merge remote-tracking branch 'origin/main' (`a241683`) — 1 file
+- **18:50 UTC** — Merge remote-tracking branch 'origin/main' (`c8fd3e4`)
 - **18:50 UTC** — feat(meta_audit): name-vs-URL cross-evidence — catch misnamed campaigns (`cf1eefd`) — 4 files
     After fixing the sync-side destination_url bug, a fresh decompose surfaced
     a second class of error: campaigns named like Amazon work whose ads
