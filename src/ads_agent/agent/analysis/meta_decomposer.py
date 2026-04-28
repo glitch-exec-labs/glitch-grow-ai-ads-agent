@@ -131,6 +131,14 @@ class CampaignRow:
     roas: float
     concentration: Concentration | None = None
     ad_sets: list[AdSetRow] = field(default_factory=list)
+    # Campaign-level Amazon halo summary — pre-computed at decompose time
+    # so the analyst can quote it verbatim instead of doing weighted-mean
+    # math itself (which it has been hallucinating). Empty string when
+    # the campaign has no Amazon-destined ads.
+    amazon_halo_blended: float = 0.0
+    amazon_destined_spend: float = 0.0
+    amazon_destined_spend_pct: float = 0.0
+    amazon_halo_summary: str = ""
 
 
 @dataclass
@@ -475,6 +483,46 @@ async def decompose_meta_account(
                     a.target_asin_meta_orders    = int(row.get("meta_orders") or 0)
                     a.target_asin_meta_gross_inr = float(row.get("meta_gross_inr") or 0.0)
                     a.target_asin_meta_clicks    = int(row.get("meta_clicks") or 0)
+
+        # Campaign-level halo summary (Phase A): spend-weighted mean across
+        # the campaign's Amazon-destined ads, plus a one-line summary the
+        # analyst is told to quote verbatim. Avoids LLM-side weighted-mean
+        # math, which was producing hallucinated digits.
+        for c in significant:
+            amz_ads: list[AdRow] = []
+            for s in c.ad_sets:
+                for a in s.ads:
+                    if a.destination == "amazon" and a.target_asin and a.spend > 0:
+                        amz_ads.append(a)
+            if not amz_ads:
+                continue
+            amz_spend = sum(a.spend for a in amz_ads)
+            c.amazon_destined_spend = round(amz_spend, 2)
+            c.amazon_destined_spend_pct = round(
+                100 * amz_spend / c.spend, 1,
+            ) if c.spend > 0 else 0.0
+            blended = (
+                sum(a.spend * a.target_asin_halo_roas for a in amz_ads)
+                / amz_spend
+            ) if amz_spend > 0 else 0.0
+            c.amazon_halo_blended = round(blended, 2)
+            # Per-ASIN breakdown sorted by spend share within the campaign
+            by_asin: dict[str, dict] = {}
+            for a in amz_ads:
+                d = by_asin.setdefault(
+                    a.target_asin,
+                    {"spend": 0.0, "halo": a.target_asin_halo_roas},
+                )
+                d["spend"] += a.spend
+            chunks = []
+            for asin, d in sorted(by_asin.items(), key=lambda x: x[1]["spend"], reverse=True):
+                pct = round(100 * d["spend"] / amz_spend, 0)
+                chunks.append(f"{int(pct)}% {asin} ({d['halo']}×)")
+            c.amazon_halo_summary = (
+                f"{c.amazon_destined_spend_pct}% of campaign spend → Amazon: "
+                + " · ".join(chunks)
+                + f" · weighted blended halo {c.amazon_halo_blended}×"
+            )
 
     return MetaAccountHierarchy(
         summary=summary, pre_flight=pre, campaigns=significant,

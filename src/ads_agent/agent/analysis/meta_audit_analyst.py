@@ -98,8 +98,96 @@ def _parse_health(text: str) -> dict:
     }
 
 
-def _parse_report(text: str) -> dict:
-    """Split the markdown report into (narrative_body, parsed actions list)."""
+# Phase B: halo-citation verifier ------------------------------------------
+# Any "X.Yx" or "X.YY" digits cited in an action's rationale near the word
+# "halo" must trace back to a real number in the supplied data; otherwise
+# the action is downgraded to severity=low (drops it out of Quick Wins) and
+# tagged [HALO_UNVERIFIED]. The LLM has been hallucinating campaign-level
+# halo digits even with per-ad halo stamps; this is a hard-fence check.
+
+_HALO_NEAR_RE = re.compile(
+    r"(?:halo[a-z\s]{0,30}?|halo[^\n]{0,30}?)(\d+\.\d{1,2})\s*[x×]?",
+    re.IGNORECASE,
+)
+
+
+def _collect_valid_halo_numbers(hierarchy_data: dict) -> set[float]:
+    """Build the set of halo numbers a rationale is allowed to cite.
+
+    Includes:
+      - account-level halo_roas
+      - per_asin halo_roas
+      - per-campaign amazon_halo_blended
+    Plus their integer floors (the LLM sometimes rounds down).
+    """
+    valid: set[float] = set()
+    halo = (hierarchy_data or {}).get("amazon_halo") or {}
+    if not halo:
+        return valid
+    if (v := halo.get("halo_roas")) is not None:
+        valid.add(round(float(v), 2))
+    for row in halo.get("per_asin", []) or []:
+        if (v := row.get("halo_roas")) is not None:
+            valid.add(round(float(v), 2))
+    for c in (hierarchy_data or {}).get("campaigns", []) or []:
+        if c.get("amazon_halo_blended"):
+            valid.add(round(float(c["amazon_halo_blended"]), 2))
+    # Allow off-by-1 rounding ±0.05
+    expanded: set[float] = set()
+    for v in valid:
+        expanded.add(v)
+        expanded.add(round(v + 0.01, 2))
+        expanded.add(round(v - 0.01, 2))
+    return expanded
+
+
+def _verify_halo_citations(
+    actions: list[dict], hierarchy_data: dict,
+) -> int:
+    """Walk parsed actions, scan their rationales for halo citations,
+    flag and downgrade any that don't match supplied numbers. Returns
+    the count of actions that were downgraded.
+    """
+    valid = _collect_valid_halo_numbers(hierarchy_data)
+    downgraded = 0
+    for a in actions:
+        rationale = a.get("rationale") or ""
+        if "halo" not in rationale.lower():
+            continue
+        cited = [round(float(m), 2) for m in _HALO_NEAR_RE.findall(rationale)]
+        if not cited:
+            continue
+        if not valid:
+            # No halo data supplied; any halo citation is automatically wrong
+            bad = cited
+        else:
+            tolerance = 0.10  # accept within 0.1 of any supplied value
+            bad = [
+                v for v in cited
+                if not any(abs(v - good) <= tolerance for good in valid)
+            ]
+        if bad:
+            a["rationale"] = (
+                rationale
+                + f"\n[HALO_UNVERIFIED: cited {bad}; supplied set {sorted(valid)}]"
+            )
+            # Downgrade severity so it falls out of Quick Wins (which keys
+            # off severity ∈ {critical, high}).
+            sev = a.get("severity", "medium")
+            if sev in ("critical", "high"):
+                a["_original_severity"] = sev
+                a["severity"] = "low"
+                downgraded += 1
+    return downgraded
+
+
+def _parse_report(text: str, hierarchy_data: dict | None = None) -> dict:
+    """Split the markdown report into (narrative_body, parsed actions list).
+
+    `hierarchy_data` is the JSON payload sent to the LLM — used by
+    Phase-B halo-citation verification. Pass None to skip verification
+    (e.g. in unit tests with synthetic markdown).
+    """
     # Actions block begins at first `### N. verb · label`
     actions_start = re.search(r"(?m)^###\s*\d+\.", text)
     narrative = text[: actions_start.start()].strip() if actions_start else text.strip()
@@ -131,6 +219,13 @@ def _parse_report(text: str) -> dict:
             "expected_impact": _field("expected_impact"),
             "safety_check":    _field("safety_check"),
         })
+    # Phase B: verify halo citations against supplied data, downgrade
+    # actions that fabricated digits. Done BEFORE sorting so the
+    # severity downgrade is reflected in the final order + Quick Wins.
+    halo_downgrades = 0
+    if hierarchy_data is not None:
+        halo_downgrades = _verify_halo_citations(actions, hierarchy_data)
+
     # Sort actions: severity DESC (critical → low), then effort ASC
     # (low → high). Stable so the LLM's relative ranking within a tier
     # is preserved.
@@ -150,6 +245,7 @@ def _parse_report(text: str) -> dict:
         "actions": actions,
         "quick_wins": quick_wins,
         "health": health,
+        "halo_downgrades": halo_downgrades,
     }
 
 
@@ -219,4 +315,4 @@ async def audit_meta_account(
             "recommendations."
         ),
     )
-    return _parse_report(raw)
+    return _parse_report(raw, hierarchy_data=payload)

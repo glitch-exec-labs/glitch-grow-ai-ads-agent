@@ -221,3 +221,92 @@ def test_global_checklist_does_not_have_m40():
     chk = load_ref("meta-audit-checklist")
     assert chk, "global checklist missing"
     assert "M40" not in chk, "global checklist leaked M40 — that's Ayurpet-only"
+
+
+# ----- Phase A: campaign-level halo stamping -------------------------------
+
+def test_campaign_row_default_halo_fields():
+    """Campaign halo fields default to 0/empty string for non-Amazon campaigns."""
+    from ads_agent.agent.analysis.meta_decomposer import CampaignRow
+    c = CampaignRow(
+        campaign_id="x", name="x", status="", effective_status="",
+        objective="", buying_type="", is_asc_plus=False,
+        daily_budget=0, lifetime_budget=0, currency="INR",
+        spend=0, impressions=0, clicks=0, ctr=0, cpc=0, cpm=0,
+        frequency=0, reach=0, purchases=0, purchase_value=0, roas=0,
+    )
+    assert c.amazon_halo_blended == 0.0
+    assert c.amazon_halo_summary == ""
+    assert c.amazon_destined_spend_pct == 0.0
+
+
+# ----- Phase B: halo-citation verifier -------------------------------------
+
+def test_halo_citation_passes_when_quoted_correctly():
+    from ads_agent.agent.analysis.meta_audit_analyst import _verify_halo_citations
+    actions = [{
+        "action_kind": "RECLAIM", "severity": "critical", "effort": "low",
+        "rationale": "ASIN halo is 6.68 — well above breakeven of 1.6.",
+    }]
+    hierarchy = {"amazon_halo": {"per_asin": [
+        {"asin": "B0FDKW4FD8", "halo_roas": 6.68},
+    ]}}
+    n = _verify_halo_citations(actions, hierarchy)
+    assert n == 0
+    assert actions[0]["severity"] == "critical"  # not downgraded
+
+
+def test_halo_citation_downgrades_when_fabricated():
+    from ads_agent.agent.analysis.meta_audit_analyst import _verify_halo_citations
+    actions = [{
+        "action_kind": "RECLAIM", "severity": "critical", "effort": "low",
+        "rationale": "Halo ROAS for this ASIN is 5.98×, well above breakeven.",
+    }]
+    hierarchy = {"amazon_halo": {"per_asin": [
+        {"asin": "B0G48Q6NZV", "halo_roas": 0.0},
+    ]}}
+    n = _verify_halo_citations(actions, hierarchy)
+    assert n == 1
+    assert actions[0]["severity"] == "low"
+    assert actions[0]["_original_severity"] == "critical"
+    assert "[HALO_UNVERIFIED" in actions[0]["rationale"]
+
+
+def test_halo_citation_passes_when_no_halo_word():
+    """Don't trigger on numbers that aren't halo claims."""
+    from ads_agent.agent.analysis.meta_audit_analyst import _verify_halo_citations
+    actions = [{
+        "action_kind": "PAUSE", "severity": "high", "effort": "low",
+        "rationale": "ROAS 0.75 is below breakeven 1.6 — pure bleed.",
+    }]
+    hierarchy = {"amazon_halo": {"per_asin": [{"asin": "X", "halo_roas": 9.0}]}}
+    n = _verify_halo_citations(actions, hierarchy)
+    assert n == 0
+
+
+def test_halo_citation_tolerance_allows_rounding():
+    """Within 0.10 of a supplied number is fine — analyst rounding-error
+    shouldn't blow up the action."""
+    from ads_agent.agent.analysis.meta_audit_analyst import _verify_halo_citations
+    actions = [{
+        "action_kind": "SCALE", "severity": "high", "effort": "low",
+        "rationale": "Halo of 6.7× makes this a clear scale.",
+    }]
+    hierarchy = {"amazon_halo": {"per_asin": [{"asin": "X", "halo_roas": 6.68}]}}
+    n = _verify_halo_citations(actions, hierarchy)
+    assert n == 0
+
+
+def test_halo_citation_accepts_campaign_blended_value():
+    """The campaign.amazon_halo_blended is also a valid number to cite."""
+    from ads_agent.agent.analysis.meta_audit_analyst import _verify_halo_citations
+    actions = [{
+        "action_kind": "SCALE", "severity": "critical", "effort": "low",
+        "rationale": "Weighted blended halo for the campaign is 4.68× — scale.",
+    }]
+    hierarchy = {
+        "amazon_halo": {"per_asin": []},
+        "campaigns": [{"amazon_halo_blended": 4.68}],
+    }
+    n = _verify_halo_citations(actions, hierarchy)
+    assert n == 0
