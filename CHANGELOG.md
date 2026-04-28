@@ -13,6 +13,19 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-28
 
+- **21:45 UTC** — Merge remote-tracking branch 'origin/main' (`d6f2b0f`) — 1 file
+- **18:50 UTC** — feat(meta_audit): name-vs-URL cross-evidence — catch misnamed campaigns (`cf1eefd`) — 4 files
+    After fixing the sync-side destination_url bug, a fresh decompose surfaced
+    a second class of error: campaigns named like Amazon work whose ads
+    actually point at Shopify URLs. On Ayurpet, ₹22.5k of 14d spend (13 ads
+    in `final_retargeting|_amazon_uae` and `UAE - HOJ - 10thApril`) is
+    operationally drift — campaigns duplicated from Amazon to Shopify but
+    the names were never updated. Either signal alone misses this; together
+    they catch it.
+    ## What the engine now does (brand-neutral)
+    src/ads_agent/meta/destinations.py — two new helpers:
+      classify_name(*texts) → {amazon_intent: bool, market_hint: AE|IN|unknown}
+- **18:45 UTC** — Merge remote-tracking branch 'origin/main' (`d602afe`) — 1 file
 - **18:34 UTC** — Merge remote-tracking branch 'origin/main' (`c73b0c8`)
 - **18:34 UTC** — fix(sync_meta_ads): destination_url silently nulled for ASC+ video creatives (`602c7c8`) — 1 file
     The Meta sync was requesting `object_story_spec.video_data.call_to_action`
