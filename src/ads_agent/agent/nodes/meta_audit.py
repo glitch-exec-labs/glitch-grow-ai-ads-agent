@@ -89,6 +89,7 @@ async def meta_audit_node(state: dict) -> dict:
         }
 
     body = (report.get("diagnosis") or "").strip()
+    halo_downgrades = report.get("halo_downgrades") or 0
     noise = hierarchy.skipped_noise or {}
     noise_line = ""
     if noise.get("count", 0) > 0:
@@ -105,8 +106,14 @@ async def meta_audit_node(state: dict) -> dict:
         f"{hierarchy.summary.purchases} purchases · "
         f"blended ROAS {hierarchy.summary.blended_roas:.2f}×\n"
         f"_methodology: playbooks/{_brand_for(slug)}.md · Section X "
-        f"(refs/meta-audit-checklist.md · refs/2025-platform-changes.md)_\n\n"
+        f"(refs/meta-audit-checklist.md · refs/2025-platform-changes.md)_\n"
     )
+    if halo_downgrades:
+        header += (
+            f"_⚠ {halo_downgrades} action(s) downgraded for unverified halo "
+            f"citations — see [HALO_UNVERIFIED] tags in rationales below_\n"
+        )
+    header += "\n"
 
     # Health Score banner — terse, scannable
     health = report.get("health") or {}
