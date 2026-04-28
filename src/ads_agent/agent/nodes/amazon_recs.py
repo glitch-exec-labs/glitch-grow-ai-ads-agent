@@ -28,12 +28,12 @@ import logging
 
 from ads_agent.agent.analysis.campaign_analyst import analyze_campaign
 from ads_agent.agent.analysis.campaign_decomposer import decompose_sp_campaign
-from ads_agent.config import STORE_MAP_ACCOUNTS, get_store
-from ads_agent.map.mcp_client import (
-    MapMcpError,
-    budget_recs,
+from ads_agent.amazon.ads_api import (
+    AmazonAdsError,
     list_sp_campaigns,
+    profile_id_for,
 )
+from ads_agent.config import get_store
 
 log = logging.getLogger(__name__)
 
@@ -55,16 +55,15 @@ def _brand_for(slug: str) -> str:
 
 
 async def _format_drilldown(
-    integration_id: str, account_id: str, campaign_id: str,
-    campaign_name: str, country: str, slug: str, days: int,
+    slug: str, campaign_id: str, campaign_name: str,
+    country: str, days: int,
 ) -> list[str]:
     """Run decomposer + analyst and format as markdown lines."""
     out: list[str] = []
     out.append(f"*📊 Deep-dive · `{campaign_name}` ({country})*")
     try:
         hierarchy = await decompose_sp_campaign(
-            integration_id=integration_id, account_id=account_id,
-            campaign_id=campaign_id, days=days,
+            slug=slug, campaign_id=campaign_id, days=days,
         )
     except Exception as e:
         out.append(f"  _decompose failed: {str(e)[:200]}_")
@@ -121,28 +120,30 @@ async def amazon_recs_node(state: dict) -> dict:
     if store is None:
         return {**state, "reply_text": f"Unknown store: `{slug}`"}
 
-    mapping = STORE_MAP_ACCOUNTS.get(slug)
-    if not mapping:
+    # Native Amazon Ads via LWA OAuth — confirm slug has a profile mapping
+    try:
+        await profile_id_for(slug)
+    except AmazonAdsError as e:
         return {**state, "reply_text": (
             f"*{store.brand}* · Amazon recs\n\n"
-            f"No MAP account mapping for `{slug}`. "
-            f"Add it to `STORE_MAP_ACCOUNTS_JSON` in .env to enable this command."
+            f"No Amazon Ads profile mapped for `{slug}`. {e}"
         )}
 
-    iid, aid, country = mapping["integration_id"], mapping["account_id"], mapping["country"]
+    # Country comes from the store config; native API doesn't expose it directly
+    country = (store.currency or "").upper().replace("INR","IN").replace("AED","AE")
     ccy = _ccy_for(country)
     lines = [f"*{store.brand} · Amazon {country}* · surgical recommendations", ""]
 
     # --- 1. Campaign roster ---------------------------------------------------
     try:
-        campaigns = await list_sp_campaigns(iid, aid)
-    except MapMcpError as e:
-        return {**state, "reply_text": f"MAP error on campaign list: {e}"}
+        campaigns = await list_sp_campaigns(slug)
+    except AmazonAdsError as e:
+        return {**state, "reply_text": f"Amazon Ads error on campaign list: {e}"}
 
     if not campaigns:
         lines.append("No enabled Sponsored Products campaigns found.")
         lines.append("")
-        lines.append("_source: Marketplace Ad Pros · proxied Amazon Ads Partner API_")
+        lines.append("_source: Amazon Ads native API (LWA OAuth)_")
         return {**state, "reply_text": "\n".join(lines)}
 
     total_budget = sum(
@@ -173,45 +174,16 @@ async def amazon_recs_node(state: dict) -> dict:
         if not camp_id:
             continue
         block = await _format_drilldown(
-            iid, aid, camp_id, camp_name, country, slug, days,
+            slug, camp_id, camp_name, country, days,
         )
         lines.extend(block)
         lines.append("")
 
-    # --- 3. Account-level budget recs (MAP, US-only — silent fallback) --------
-    try:
-        brecs = await budget_recs(iid, aid)
-    except MapMcpError as e:
-        brecs = {"error": str(e)}
+    # Account-level budget recs were a MAP-paid-tier-only feature; gone with
+    # the MAP rip-out. Native Amazon Ads API has its own /budgetRules and
+    # /budgetUsage endpoints — wire those in a follow-up if the operator
+    # wants budget-exhaustion alerts.
 
-    if brecs.get("_plan_gated"):
-        lines.append("_budget recs: plan-gated_")
-    elif "error" not in brecs:
-        items = (
-            brecs.get("campaigns")
-            or brecs.get("items")
-            or (brecs.get("data") or {}).get("campaigns")
-            or []
-        )
-        at_risk = [
-            i for i in items
-            if i.get("missedOpportunity") or i.get("outOfBudgetProb")
-            or (i.get("budgetRecommendation") or {}).get("recommendedBudget")
-        ]
-        if at_risk:
-            lines.append(f"*Budget-exhaustion alerts ({len(at_risk)}):*")
-            for r in at_risk[:5]:
-                name = r.get("campaignName") or r.get("name") or r.get("campaignId", "?")
-                rec = (r.get("budgetRecommendation") or {}).get("recommendedBudget")
-                miss = r.get("missedOpportunity") or r.get("estimatedMissedImpressions")
-                extras = []
-                if rec:  extras.append(f"→ bump to {rec}")
-                if miss: extras.append(f"miss {miss}")
-                lines.append(f"  • {str(name)[:55]} {' · '.join(extras)}")
-            if len(at_risk) > 5:
-                lines.append(f"  …+{len(at_risk) - 5} more")
-            lines.append("")
-
-    lines.append("_source: MAP (structure + metrics) + methodology analyst "
-                 "(playbook Section X)_")
+    lines.append("_source: Amazon Ads native API (LWA OAuth) + methodology "
+                 "analyst (playbook Section X)_")
     return {**state, "reply_text": "\n".join(lines)}

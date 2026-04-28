@@ -31,7 +31,11 @@ import logging
 from dataclasses import dataclass, field, asdict
 from typing import Any
 
-from ads_agent.map.mcp_client import MapMcpError, ask_analyst, call_tool as map_call
+from ads_agent.amazon.ads_api import (
+    AmazonAdsError as MapMcpError,    # alias keeps existing except-clauses working
+    get_ad_metrics, get_keyword_metrics, get_target_metrics,
+    list_resources,
+)
 
 log = logging.getLogger(__name__)
 
@@ -183,77 +187,72 @@ class CampaignHierarchy:
 
 # --- Fetch helpers ----------------------------------------------------------
 
-async def _list_resource(integration_id: str, account_id: str,
-                         resource_type: str, filters: dict) -> list[dict]:
-    """Thin wrapper around MAP's list_resources with MAP's required
-    filters-in-filters shape."""
+async def _list_resource(slug: str, resource_type: str,
+                         filters: dict | None = None) -> list[dict]:
+    """Native Amazon Ads API list endpoint.
+
+    `filters` is preserved as a kwarg for backward signature compat with
+    callers that pass campaign_id / ad_group_id; routed through to the
+    native client's typed kwargs.
+    """
+    f = filters or {}
     try:
-        data, gated = await map_call("list_resources", {
-            "integration_id": integration_id,
-            "account_id": account_id,
-            "resource_type": resource_type,
-            "filters": filters,
-        })
-        if gated:
-            log.warning("MAP list_resources %s plan-gated", resource_type)
-            return []
-        if isinstance(data, dict) and data.get("error"):
-            log.warning("MAP list_resources %s error: %s", resource_type, data["error"])
-            return []
-        return (data or {}).get("items", []) if isinstance(data, dict) else []
+        data, gated = await list_resources(
+            slug, resource_type,
+            campaign_id=f.get("campaign_id") or (f.get("campaign_ids") or [None])[0]
+                        if isinstance(f.get("campaign_ids"), list) else f.get("campaign_id"),
+            ad_group_id=f.get("ad_group_id"),
+            state_filter=f.get("state_filter") or "ENABLED",
+        )
+        return (data or {}).get("items", [])
     except MapMcpError as e:
-        log.warning("MAP list_resources %s failed: %s", resource_type, e)
+        log.warning("Amazon Ads list_resources %s failed: %s", resource_type, e)
         return []
 
 
-async def _metrics_per_child(integration_id: str, account_id: str,
-                             campaign_id: str, days: int) -> tuple[list[dict], list[dict]]:
-    """Ask MAP's analyst for AGGREGATED keyword-level + ASIN-level 14d metrics.
+async def _metrics_per_child(slug: str, campaign_id: str, days: int) -> tuple[list[dict], list[dict]]:
+    """Native per-keyword + per-ad metrics via Reports v3.
 
-    Critical: the analyst defaults to per-day rows. We MUST demand
-    aggregation over the date window explicitly, or we'll sum daily
-    fragments as if they were per-entity totals and get bogus numbers.
+    Two parallel async reports. Each takes 30-90s on Amazon's side, so
+    we run them concurrently. Filtered to the requested campaign in-memory
+    after the report comes back (Reports v3 doesn't pre-filter by campaign).
 
-    Returns (keyword_rows, product_ad_rows):
-      keyword_rows — one row per (keyword_id | targeting_expression, match_type)
-      product_ad_rows — one row per (ad_id, asin)
+    Returns (keyword_rows, product_ad_rows) — same shape callers expect:
+      keyword_rows = [{keyword, matchType, adGroupId, sum_cost, sum_sales14d, ...}]
+      product_ad_rows = [{advertisedAsin, adId, adGroupId, sum_cost, ...}]
     """
-    from datetime import date, timedelta
-    end = date.today()
-    start = end - timedelta(days=days)
+    import asyncio
 
-    q_keywords = (
-        f"For campaignId={campaign_id}, date range {start} to {end}, "
-        f"AGGREGATE by (keyword, matchType) across the entire window — "
-        f"one row per unique bid target. Include both match-typed keywords "
-        f"(EXACT/PHRASE/BROAD) AND targeting expressions. Return columns: "
-        f"keyword, matchType, adGroupName, adGroupId, keywordBid, "
-        f"SUM(cost), SUM(sales14d), SUM(purchases14d), SUM(clicks), "
-        f"SUM(impressions). Exclude rows with zero cost. Sort by SUM(cost) "
-        f"descending. Return compact structured data."
-    )
-    q_ads = (
-        f"For campaignId={campaign_id}, date range {start} to {end}, "
-        f"AGGREGATE by (advertisedAsin, adId) across the entire window. "
-        f"Return columns: advertisedAsin, adId, adGroupName, adGroupId, "
-        f"SUM(cost), SUM(sales14d), SUM(purchases14d), SUM(clicks), "
-        f"SUM(impressions). Exclude zero-cost rows. Sort by SUM(cost) desc. "
-        f"Structured data only."
-    )
-
-    async def _one(q: str, label: str) -> list[dict]:
+    async def _kw():
         try:
-            data = await ask_analyst(integration_id, account_id, q)
+            rows = await get_keyword_metrics(slug, days=days)
         except MapMcpError as e:
-            log.warning("analyst %s failed: %s", label, e)
-            return []
-        if data.get("_plan_gated"):
-            return []
-        return data.get("data", []) if isinstance(data, dict) else []
+            log.warning("native keyword report failed: %s", e); return []
+        return [r for r in rows if str(r.get("campaignId", "")) == str(campaign_id)]
 
-    kw_rows  = await _one(q_keywords, "keywords")
-    ad_rows  = await _one(q_ads,      "product_ads")
-    return kw_rows, ad_rows
+    async def _ad():
+        try:
+            rows = await get_ad_metrics(slug, days=days)
+        except MapMcpError as e:
+            log.warning("native ad report failed: %s", e); return []
+        return [r for r in rows if str(r.get("campaignId", "")) == str(campaign_id)]
+
+    kw, ad = await asyncio.gather(_kw(), _ad())
+
+    # Re-shape to the column-name conventions the rest of the decomposer
+    # expects (sum_cost, sum_sales14d, …) — Reports v3 returns:
+    #   cost, sales1d, purchases1d, clicks, impressions
+    # We stamp both names so _extract_metric() finds whichever it asks for.
+    def _restamp(rows: list[dict]) -> list[dict]:
+        for r in rows:
+            r["sum_cost"]         = float(r.get("cost", 0) or 0)
+            r["sum_sales14d"]     = float(r.get("sales1d", 0) or 0)
+            r["sum_purchases14d"] = int(r.get("purchases1d", 0) or 0)
+            r["sum_clicks"]       = int(r.get("clicks", 0) or 0)
+            r["sum_impressions"]  = int(r.get("impressions", 0) or 0)
+        return rows
+
+    return _restamp(kw), _restamp(ad)
 
 
 def _extract_metric(r: dict, *keys, default=0.0):
@@ -421,31 +420,29 @@ def _attach_child_spend_shares(campaign_metrics: Metrics14d,
 # --- Public entry point -----------------------------------------------------
 
 async def decompose_sp_campaign(
-    *, integration_id: str, account_id: str, campaign_id: str, days: int = 14,
+    *, slug: str, campaign_id: str, days: int = 14,
 ) -> CampaignHierarchy:
     """Fetch + decompose one SP campaign into a CampaignHierarchy.
 
-    Makes 3 MAP calls:
-      1. list_resources sp_campaigns  → campaign metadata (filter by id)
-      2. list_resources sp_ad_groups   → ad-group metadata
-      3. ask_report_analyst            → per-child 14-day metrics + campaign totals
+    Native Amazon Ads via LWA:
+      1. /sp/campaigns/list  → campaign metadata
+      2. /sp/adGroups/list   → ad-group metadata
+      3. /reporting/reports  → per-keyword + per-ad metrics (Reports v3)
 
     Returns a fully-populated CampaignHierarchy. Missing data → empty
     metrics rather than raising, so partial results are still useful.
     """
-    # 1. Campaign metadata — we fetch all enabled + filter client-side
-    # (MAP's campaign_id filter on list_resources is inconsistent).
-    all_camps = await _list_resource(integration_id, account_id,
-                                     "sp_campaigns", {"state_filter": "ENABLED"})
+    # 1. Campaign metadata
+    all_camps = await _list_resource(slug, "sp_campaigns",
+                                     {"state_filter": "ENABLED"})
     camp_raw = next((c for c in all_camps if str(c.get("campaignId")) == campaign_id), None)
     if not camp_raw:
-        # Try without state filter in case it's paused
-        all_camps = await _list_resource(integration_id, account_id,
-                                         "sp_campaigns", {})
+        # Try without state filter in case it's paused / archived
+        all_camps = await _list_resource(slug, "sp_campaigns", {})
         camp_raw = next((c for c in all_camps if str(c.get("campaignId")) == campaign_id), None)
 
     if not camp_raw:
-        raise ValueError(f"campaign {campaign_id} not found in account {account_id}")
+        raise ValueError(f"campaign {campaign_id} not found in slug {slug}")
 
     budget_obj = camp_raw.get("budget") or {}
     bidding = (camp_raw.get("dynamicBidding") or {}).get("strategy", "?")
@@ -459,8 +456,8 @@ async def decompose_sp_campaign(
         placement_modifiers=placement_mods,
     )
 
-    # 2. Ad groups
-    ag_raw = await _list_resource(integration_id, account_id, "sp_ad_groups",
+    # 2. Ad groups (filtered to this campaign by the native client)
+    ag_raw = await _list_resource(slug, "sp_ad_groups",
                                   {"campaign_id": campaign_id})
     ad_groups = [
         AdGroup(
@@ -472,8 +469,8 @@ async def decompose_sp_campaign(
     ]
     ag_index = {ag.id: ag for ag in ad_groups}
 
-    # 3. Per-child metrics via analyst — keywords + product ads separately
-    kw_rows, ad_rows = await _metrics_per_child(integration_id, account_id, campaign_id, days)
+    # 3. Per-child metrics via Reports v3
+    kw_rows, ad_rows = await _metrics_per_child(slug, campaign_id, days)
 
     if not kw_rows and not ad_rows:
         log.warning("campaign %s has no child metrics from analyst", campaign_id)
