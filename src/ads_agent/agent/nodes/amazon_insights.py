@@ -28,8 +28,10 @@ import logging
 
 import asyncpg
 
-from ads_agent.config import STORE_MAP_ACCOUNTS, get_store, settings
-from ads_agent.map.mcp_client import MapMcpError, ads_totals
+from ads_agent.amazon.ads_api import AmazonAdsError, ads_totals, profile_id_for
+from ads_agent.config import get_store, settings
+# Backward alias so existing except-clauses keep working
+MapMcpError = AmazonAdsError
 
 log = logging.getLogger(__name__)
 
@@ -100,35 +102,36 @@ async def amazon_insights_node(state: dict) -> dict:
             )
         lines.append("")
 
-    # ── Amazon Ads — MAP (primary) with Airbyte fallback ──────────────────────
-    map_cfg = STORE_MAP_ACCOUNTS.get(slug)
-    used_source = "map"
+    # ── Amazon Ads — native LWA (primary) with Airbyte fallback ──────────────
+    used_source = "amazon_native"
     ads_block_rendered = False
+    has_profile = False
+    try:
+        await profile_id_for(slug)
+        has_profile = True
+    except AmazonAdsError:
+        pass
 
-    if map_cfg:
+    if has_profile:
         try:
-            t = await ads_totals(map_cfg["integration_id"], map_cfg["account_id"], days)
-        except MapMcpError as e:
-            log.warning("MAP ads_totals failed for %s: %s; falling back to Airbyte", slug, e)
+            t = await ads_totals(slug, days)
+        except AmazonAdsError as e:
+            log.warning("native ads_totals failed for %s: %s; falling back to Airbyte", slug, e)
             t = None
             used_source = "airbyte-fallback"
-        else:
-            if t.get("_plan_gated"):
-                log.warning("MAP plan-gated; falling back to Airbyte for %s ads block", slug)
-                t = None
-                used_source = "airbyte-fallback"
 
         if t:
-            ccy = t.get("currency") or ""
-            cost, sales = t["cost"], t["sales14d"]
+            cost  = float(t.get("spend") or 0)
+            sales = float(t.get("sales14d") or 0)
             roas = (sales / cost) if cost else 0
             lines.append(
-                f"*Amazon Ads (via MAP · {map_cfg['country']} account · authoritative)*"
+                f"*Amazon Ads (native LWA · authoritative)*"
             )
+            ccy = (store.currency or "")
             lines.append(
                 f"  spend {cost:,.2f} {ccy} · sales14d {sales:,.2f} {ccy} · "
-                f"ROAS {roas:.2f}x · purchases14d {t['purchases14d']} · "
-                f"clicks {t['clicks']:,} · imp {t['impressions']:,}"
+                f"ROAS {roas:.2f}x · purchases14d {t.get('purchases14d', 0)} · "
+                f"clicks {t.get('clicks', 0):,} · imp {t.get('impressions', 0):,}"
             )
             lines.append(
                 f"  _for multi-market breakdown, use_ `/amazon_recs {slug}`"

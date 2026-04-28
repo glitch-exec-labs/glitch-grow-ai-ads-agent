@@ -13,7 +13,13 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-28
 
-- **21:45 UTC** — Merge remote-tracking branch 'origin/main' (`d6f2b0f`) — 1 file
+- **22:15 UTC** — auto-sync: 2026-04-28 22:15 UTC (`34f886f`) — 5 files
+        M	src/ads_agent/agent/analysis/campaign_decomposer.py
+        M	src/ads_agent/agent/nodes/amazon_insights.py
+        M	src/ads_agent/agent/nodes/amazon_recs.py
+        A	src/ads_agent/amazon/ads_api.py
+        A	src/ads_agent/amazon/mutations.py
+- **22:00 UTC** — Merge remote-tracking branch 'origin/main' (`a241683`) — 1 file
 - **18:50 UTC** — feat(meta_audit): name-vs-URL cross-evidence — catch misnamed campaigns (`cf1eefd`) — 4 files
     After fixing the sync-side destination_url bug, a fresh decompose surfaced
     a second class of error: campaigns named like Amazon work whose ads
