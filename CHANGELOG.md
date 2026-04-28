@@ -13,10 +13,23 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-28
 
-- **02:00 UTC** — Merge remote-tracking branch 'origin/main' (`04740dc`) — 1 file
+- **02:25 UTC** — Merge remote-tracking branch 'origin/main' (`7cf6c22`)
+- **02:24 UTC** — fix(meta_audit): stamp per-ASIN halo onto every Amazon-destined AdRow (`ab99d05`) — 2 files
+    First live run of the destination-aware lens revealed the LLM sometimes
+    mis-quotes per-ASIN halo numbers — picking the wrong row from
+    amazon_halo.per_asin. Two audits of the same Ayurpet account on the
+    same day disagreed on which ASIN's halo applied to `UAE - AMAZON -
+    GoodGut` (PAUSE quoting halo 1.01× vs SCALE quoting halo 9.92×, neither
+    matching the live per_asin data which had B0FDKW4FD8 at 6.78× and
+    B0G48Q6NZV at 0.0×).
+    Fix: pre-resolve the per-ASIN halo at decompose time and attach to
+    each AdRow:
+      AdRow.target_asin_halo_roas
+- **02:15 UTC** — Merge remote-tracking branch 'origin/main' (`1cb7d7d`) — 1 file
 
 ## 2026-04-27
 
+- **23:57 UTC** — Merge remote-tracking branch 'origin/main' (`3252d4c`)
 - **23:57 UTC** — feat(meta_audit): destination tagging + Amazon halo data — engine-neutral (`31b14c4`) — 5 files
     Engine-level capability. Methodology (M40 / RECLAIM verb) lives in the
     Ayurpet playbook brief only — other brands see the data but their
