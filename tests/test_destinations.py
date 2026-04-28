@@ -126,8 +126,80 @@ def test_ayurpet_brief_has_m40_and_reclaim():
     from ads_agent.playbook import node_brief
     brief = node_brief("meta_audit", "ayurpet")
     assert brief, "Ayurpet brief missing"
-    for tok in ("M40", "RECLAIM", "amazon_halo", "destination = amazon"):
+    for tok in ("M40", "RECLAIM", "amazon_halo", "destination = amazon",
+                "target_asin_halo_roas"):
         assert tok in brief, f"ayurpet brief missing token {tok!r}"
+
+
+def test_adrow_carries_halo_stamp_fields():
+    """Halo stamp fields must default to 0.0/0 so non-Amazon ads don't
+    accidentally inherit halo data."""
+    from ads_agent.agent.analysis.meta_decomposer import AdRow
+    a = AdRow(
+        ad_id="1", ad_name="x", status="", effective_status="",
+        spend=100, impressions=1000, clicks=10, ctr=1.0, cpc=10, cpm=100,
+        frequency=1.0, reach=900, purchases=1, purchase_value=300, roas=3.0,
+        days_live=14,
+    )
+    assert a.target_asin_halo_roas == 0.0
+    assert a.target_asin_meta_orders == 0
+    assert a.target_asin_meta_gross_inr == 0.0
+    assert a.target_asin_meta_clicks == 0
+
+
+def test_halo_stamping_picks_correct_asin_row():
+    """Synthesise a hierarchy + halo, run the stamping logic, verify
+    each Amazon-destined ad gets the row matching its target_asin."""
+    from ads_agent.agent.analysis.meta_decomposer import AdRow
+
+    # Two ads — one targets B0FDKW4FD8 (halo 6.78×), other B0G48Q6NZV (halo 0.0×).
+    ads = [
+        AdRow(ad_id="A", ad_name="a", status="", effective_status="",
+              spend=100, impressions=1000, clicks=10, ctr=1, cpc=10, cpm=100,
+              frequency=1, reach=900, purchases=0, purchase_value=0, roas=0,
+              days_live=14, destination="amazon", target_asin="B0FDKW4FD8"),
+        AdRow(ad_id="B", ad_name="b", status="", effective_status="",
+              spend=200, impressions=2000, clicks=20, ctr=1, cpc=10, cpm=100,
+              frequency=1, reach=1800, purchases=0, purchase_value=0, roas=0,
+              days_live=14, destination="amazon", target_asin="B0G48Q6NZV"),
+        # Shopify-destined: must NOT get halo stamp
+        AdRow(ad_id="C", ad_name="c", status="", effective_status="",
+              spend=300, impressions=3000, clicks=30, ctr=1, cpc=10, cpm=100,
+              frequency=1, reach=2700, purchases=2, purchase_value=400, roas=1.33,
+              days_live=14, destination="shopify-global", target_asin=""),
+    ]
+
+    halo = {
+        "per_asin": [
+            {"asin": "B0FDKW4FD8", "halo_roas": 6.78, "meta_orders": 21,
+             "meta_gross_inr": 79972.0, "meta_clicks": 250},
+            {"asin": "B0G48Q6NZV", "halo_roas": 0.0,  "meta_orders": 0,
+             "meta_gross_inr": 0.0, "meta_clicks": 100},
+        ]
+    }
+
+    # Inline the stamping logic from decompose_meta_account so we can unit-test
+    # without hitting Postgres for the halo or Graph for the decompose.
+    asin_halo = {row["asin"]: row for row in halo["per_asin"]}
+    for a in ads:
+        if a.destination != "amazon" or not a.target_asin:
+            continue
+        row = asin_halo.get(a.target_asin)
+        if not row: continue
+        a.target_asin_halo_roas      = float(row["halo_roas"])
+        a.target_asin_meta_orders    = int(row["meta_orders"])
+        a.target_asin_meta_gross_inr = float(row["meta_gross_inr"])
+        a.target_asin_meta_clicks    = int(row["meta_clicks"])
+
+    # A → B0FDKW4FD8 row stamped
+    assert ads[0].target_asin_halo_roas == 6.78
+    assert ads[0].target_asin_meta_orders == 21
+    # B → B0G48Q6NZV row stamped (zero halo, but row exists)
+    assert ads[1].target_asin_halo_roas == 0.0
+    assert ads[1].target_asin_meta_orders == 0
+    # C → Shopify, no stamp
+    assert ads[2].target_asin_halo_roas == 0.0
+    assert ads[2].target_asin_meta_orders == 0
 
 
 def test_other_brand_briefs_do_not_have_m40_or_reclaim():

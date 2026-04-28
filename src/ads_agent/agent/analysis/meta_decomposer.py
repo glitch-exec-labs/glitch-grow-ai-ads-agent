@@ -58,6 +58,14 @@ class AdRow:
     destination: str = "unknown"   # amazon | shopify-ind | shopify-global | shopify-other | other | unknown
     destination_url: str = ""
     target_asin: str = ""
+    # Halo stamp — populated at decompose time from amazon_halo.per_asin.
+    # Lets the analyst quote a deterministic per-ad halo number instead
+    # of having to find the right per_asin row itself (which it sometimes
+    # hallucinates). 0.0 / 0 when destination != amazon or no halo data.
+    target_asin_halo_roas: float = 0.0
+    target_asin_meta_orders: int = 0
+    target_asin_meta_gross_inr: float = 0.0
+    target_asin_meta_clicks: int = 0
 
 
 @dataclass
@@ -447,6 +455,26 @@ async def decompose_meta_account(
     # (today: ayurpet-ind, ayurpet-global). Other brands get an empty dict
     # and their analyst prompt won't reference the halo at all.
     halo = await _amazon_halo_for_slug(store_slug, days)
+
+    # Stamp per-ASIN halo onto every Amazon-destined AdRow so the analyst
+    # has a deterministic, ad-attached number to quote in M40 / RECLAIM /
+    # SCALE rationales — eliminates the per_asin lookup hallucination
+    # we hit on the first live audit (LLM sometimes picked the wrong
+    # ASIN's halo from the per_asin list).
+    if halo and halo.get("per_asin"):
+        asin_halo: dict[str, dict] = {row["asin"]: row for row in halo["per_asin"]}
+        for c in significant:
+            for s in c.ad_sets:
+                for a in s.ads:
+                    if a.destination != "amazon" or not a.target_asin:
+                        continue
+                    row = asin_halo.get(a.target_asin)
+                    if not row:
+                        continue
+                    a.target_asin_halo_roas      = float(row.get("halo_roas") or 0.0)
+                    a.target_asin_meta_orders    = int(row.get("meta_orders") or 0)
+                    a.target_asin_meta_gross_inr = float(row.get("meta_gross_inr") or 0.0)
+                    a.target_asin_meta_clicks    = int(row.get("meta_clicks") or 0)
 
     return MetaAccountHierarchy(
         summary=summary, pre_flight=pre, campaigns=significant,
