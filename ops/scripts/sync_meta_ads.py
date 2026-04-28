@@ -176,6 +176,10 @@ def _extract_destination_url(creative: dict) -> tuple[str | None, str | None]:
             ctas = (afs.get("call_to_action_types") or [])
             return ws, (ctas[0] if ctas else None)
 
+    # 5) creative.object_url — legacy/SHARE shape (some ASC+ uses this)
+    if creative.get("object_url"):
+        return creative["object_url"], None
+
     return None, None
 
 
@@ -239,12 +243,17 @@ async def sync_one_account(
     active_ad_ids = sorted({r["ad_id"] for r in insights if r.get("ad_id")})
     ad_by_id: dict[str, dict] = {}
     CHUNK = 50
+    # IMPORTANT: video_data.call_to_action MUST expand `value{link}` —
+    # without it Meta returns the CTA wrapper but no link. Most ASC+
+    # video creatives store the destination URL ONLY here, so missing
+    # this expansion silently nulls destination_url for ~60% of spend
+    # on a typical D2C account. Same logic for object_url fallback.
     creative_fields = (
         "id,name,status,effective_status,campaign_id,adset_id,"
-        "creative{id,thumbnail_url,body,title,object_type,"
-        "object_story_spec{link_data{link,call_to_action},"
-        "video_data{call_to_action},"
-        "template_data{link,call_to_action}},"
+        "creative{id,thumbnail_url,body,title,object_type,object_url,"
+        "object_story_spec{link_data{link,call_to_action{type,value}},"
+        "video_data{call_to_action{type,value}},"
+        "template_data{link,call_to_action{type,value}}},"
         "asset_feed_spec{link_urls,call_to_action_types}}"
     )
     for i in range(0, len(active_ad_ids), CHUNK):
