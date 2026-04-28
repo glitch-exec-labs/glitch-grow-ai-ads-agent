@@ -13,7 +13,20 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-28
 
-- **18:15 UTC** — Merge remote-tracking branch 'origin/main' (`0938916`) — 1 file
+- **18:34 UTC** — Merge remote-tracking branch 'origin/main' (`c73b0c8`)
+- **18:34 UTC** — fix(sync_meta_ads): destination_url silently nulled for ASC+ video creatives (`602c7c8`) — 1 file
+    The Meta sync was requesting `object_story_spec.video_data.call_to_action`
+    without expanding `value{link}`. Meta returned the CTA wrapper but no
+    link, so the extractor's video_data branch always got None — even when
+    the destination URL existed in the API response.
+    Net effect on Ayurpet over 14 days:
+      - 66 high-spend ads / ₹159k tagged as destination=NULL
+      - amazon.ae spend showed as ₹7,198 in our pipeline vs ₹25k on Meta
+        dashboard — 64% under-reported
+      - amazon_attribution_daily_v missed half the Amazon-destined budget,
+        making earlier audit halo numbers (4.00× IND, 2.94× AE) too low
+- **18:30 UTC** — Merge remote-tracking branch 'origin/main' (`1b2935e`) — 1 file
+- **02:40 UTC** — Merge remote-tracking branch 'origin/main' (`452ce4d`)
 - **02:39 UTC** — fix(meta_audit): Phase A + B — campaign-level halo stamping + citation verifier (`1598ad2`) — 4 files
     After the per-ad halo stamp (ab99d05), the LLM still hallucinated
     campaign-level halo digits because ASC+ campaigns force campaign-level
