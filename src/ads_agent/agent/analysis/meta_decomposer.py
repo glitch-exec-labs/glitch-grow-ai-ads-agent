@@ -633,10 +633,10 @@ async def _amazon_halo_for_slug(store_slug: str | None, days: int) -> dict:
     if not store_slug:
         return {}
     try:
-        from ads_agent.config import STORE_MAP_ACCOUNTS, settings
+        from ads_agent.config import STORE_AMAZON_ACCOUNTS, settings
     except Exception:
         return {}
-    if store_slug not in STORE_MAP_ACCOUNTS:
+    if store_slug not in STORE_AMAZON_ACCOUNTS:
         return {}
 
     try:

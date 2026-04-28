@@ -442,6 +442,9 @@ async def get_campaign_metrics(
     pid = await profile_id_for(slug, pool)
     end = datetime.now(timezone.utc).date()
     start = end - timedelta(days=days - 1)
+    # Note: spCampaigns SUMMARY supports `sales1d/7d/14d` and `purchases1d/7d/14d`
+    # but NOT `acosClicks1d` / `roasClicks1d` — those are only on
+    # spTargeting / spAdvertisedProduct. We compute ROAS in Python instead.
     body = {
         "name": f"sp-campaigns-{slug}-{start}-{end}",
         "startDate": start.isoformat(),
@@ -450,10 +453,9 @@ async def get_campaign_metrics(
             "adProduct": "SPONSORED_PRODUCTS",
             "groupBy": [group_by],
             "columns": [
-                "campaignId", "campaignName",
+                "campaignId", "campaignName", "campaignBiddingStrategy",
                 "impressions", "clicks", "cost",
                 "sales1d", "purchases1d", "unitsSoldClicks1d",
-                "acosClicks1d", "roasClicks1d",
             ],
             "reportTypeId": "spCampaigns",
             "timeUnit": "SUMMARY",
@@ -468,7 +470,7 @@ async def get_campaign_metrics(
         raise AmazonAdsError(f"reports/create returned no reportId: {create}")
 
     # Poll
-    for i in range(40):
+    for i in range(120):                # up to 6 min total
         await asyncio.sleep(3)
         status = await _get(f"/reporting/reports/{report_id}", profile_id=pid,
                             accept="application/vnd.createasyncreportrequest.v3+json",
@@ -549,7 +551,7 @@ async def _run_report(
     report_id = create.get("reportId")
     if not report_id:
         raise AmazonAdsError(f"reports/create returned no reportId: {create}")
-    for i in range(60):
+    for i in range(120):  # 6 min cap
         await asyncio.sleep(3)
         status = await _get(f"/reporting/reports/{report_id}", profile_id=pid,
                             accept="application/vnd.createasyncreportrequest.v3+json",

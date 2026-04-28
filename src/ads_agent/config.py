@@ -248,6 +248,36 @@ def _load_store_map_accounts() -> dict[str, dict[str, str]]:
 STORE_MAP_ACCOUNTS: dict[str, dict[str, str]] = _load_store_map_accounts()
 
 
+# ---------------------------------------------------------------------------
+# AMAZON_ACCOUNTS_JSON — store slug → list of Amazon accounts (Seller +
+# Sponsored Ads, by data-source ds_id). Parsed once at import time.
+#
+# Used by: native Amazon Ads client (slug → marketplace → profile_id),
+# the meta_audit halo gate (slug must be in this map for halo to fire),
+# and Airbyte → Postgres sync mappings.
+# ---------------------------------------------------------------------------
+
+
+def _load_store_amazon_accounts() -> dict[str, list[dict]]:
+    raw = os.environ.get("AMAZON_ACCOUNTS_JSON", "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        log.warning("AMAZON_ACCOUNTS_JSON invalid: %s", e)
+        return {}
+    out: dict[str, list[dict]] = {}
+    for slug, accts in (parsed or {}).items():
+        if not isinstance(accts, list):
+            continue
+        out[slug] = [a for a in accts if isinstance(a, dict)]
+    return out
+
+
+STORE_AMAZON_ACCOUNTS: dict[str, list[dict]] = _load_store_amazon_accounts()
+
+
 # Scopes we need above the existing write_orders baseline to do analytics reads.
 # Apply these by bumping *_SCOPES csv in /home/support/multi-store-theme-manager/.env
 # then forcing merchant re-auth.
