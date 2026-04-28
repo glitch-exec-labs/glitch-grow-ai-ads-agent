@@ -13,6 +13,19 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-28
 
+- **18:15 UTC** — Merge remote-tracking branch 'origin/main' (`0938916`) — 1 file
+- **02:39 UTC** — fix(meta_audit): Phase A + B — campaign-level halo stamping + citation verifier (`1598ad2`) — 4 files
+    After the per-ad halo stamp (ab99d05), the LLM still hallucinated
+    campaign-level halo digits because ASC+ campaigns force campaign-level
+    verdicts and the analyst was attempting weighted-mean math itself.
+    Two audits of the same account quoted contradictory halos for the same
+    campaigns (1.01× / 5.98× / 9.92× / 2.06× — none matching supplied data).
+    ## Phase A — campaign-level halo stamping (engine)
+    CampaignRow now carries:
+      amazon_destined_spend
+      amazon_destined_spend_pct
+      amazon_halo_blended       — spend-weighted mean across the campaign's ASINs
+- **02:30 UTC** — Merge remote-tracking branch 'origin/main' (`c20d3f1`) — 1 file
 - **02:25 UTC** — Merge remote-tracking branch 'origin/main' (`7cf6c22`)
 - **02:24 UTC** — fix(meta_audit): stamp per-ASIN halo onto every Amazon-destined AdRow (`ab99d05`) — 2 files
     First live run of the destination-aware lens revealed the LLM sometimes
