@@ -30,6 +30,28 @@ from urllib.parse import urlparse
 # Compiled once. Matches /dp/ASIN, /gp/product/ASIN, /product/ASIN paths.
 _ASIN_RE = re.compile(r"/(?:dp|gp/product|product)/([A-Z0-9]{10})(?:[/?]|$)")
 
+# Name-based intent classifiers. Names carry the human-stated intent of a
+# campaign (e.g. "UAE - AMAZON - GoodGut") and are useful when:
+#   - URL extraction fails (missing destination_url, short-link not yet
+#     resolved, sync field-expansion bug)
+#   - URL and name disagree (e.g. campaign duplicated from Amazon to
+#     Shopify but name not updated — common operational drift)
+# Used together with classify_destination() for cross-evidence.
+# `amazon` and `amzn` are unique enough tokens that we don't enforce word
+# boundaries — Ayurpet names like `HOJ_Luna_NewAmazon` and `_amazon_uae`
+# mix them into compound names. False positives on these tokens in normal
+# English ad copy are rare. `amz` alone IS too generic; require a separator
+# (`amz_`, `amz-`, `_amz`, `-amz`) so we don't fire on "amzanything".
+_NAME_AMZ_RE = re.compile(r"(amazon|amzn|amz[_-]|[_-]amz)", re.I)
+_NAME_AE_RE  = re.compile(r"(?<![a-z])(uae|dubai|abu[- ]?dhabi|emirates|fitoor)(?![a-z])", re.I)
+# IN is a tricky token — it appears as a word in lots of unrelated names.
+# Look for the more specific signals.
+_NAME_IN_RE  = re.compile(
+    r"(?<![a-z])(india|bharat|delhi|mumbai|bangalore|hyderabad|noida|gurgaon|" \
+    r"chennai|pune|kolkata|amazon[._ -]?in|in[._ -]?amazon)(?![a-z])",
+    re.I,
+)
+
 
 def classify_destination(url: str | None) -> str:
     """Bucket a Meta destination URL into a stable label.
@@ -51,6 +73,41 @@ def classify_destination(url: str | None) -> str:
     if "myshopify.com" in host:
         return "shopify-other"
     return "other"
+
+
+def classify_name(*texts: str | None) -> dict:
+    """Classify intent from campaign / adset / ad names. Joins all
+    supplied texts and runs three keyword passes.
+
+    Returns:
+      {"amazon_intent": bool, "market_hint": "AE"|"IN"|"unknown"}
+    """
+    blob = " ".join(t for t in texts if t)
+    return {
+        "amazon_intent": bool(_NAME_AMZ_RE.search(blob)),
+        "market_hint":   "AE" if _NAME_AE_RE.search(blob)
+                         else ("IN" if _NAME_IN_RE.search(blob) else "unknown"),
+    }
+
+
+def cross_check(destination: str, name_classification: dict) -> str:
+    """Compare URL-based destination vs name-based intent.
+
+    Returns:
+      "match"       — both signals agree (most cases)
+      "name_only"   — name says Amazon but URL points at Shopify or other
+      "url_only"    — URL says Amazon but name has no Amazon hint
+      "n/a"         — not Amazon-related on either side
+    """
+    url_amazon = (destination == "amazon")
+    name_amazon = bool(name_classification.get("amazon_intent"))
+    if not url_amazon and not name_amazon:
+        return "n/a"
+    if url_amazon and name_amazon:
+        return "match"
+    if name_amazon and not url_amazon:
+        return "name_only"  # campaign named Amazon, URL points elsewhere
+    return "url_only"       # URL is Amazon, name doesn't say so
 
 
 def parse_asin(url: str | None) -> str | None:
