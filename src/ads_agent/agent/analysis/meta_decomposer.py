@@ -66,6 +66,12 @@ class AdRow:
     target_asin_meta_orders: int = 0
     target_asin_meta_gross_inr: float = 0.0
     target_asin_meta_clicks: int = 0
+    # Name-based intent (campaign+adset+ad names). Cross-evidence for
+    # cases where URL extraction fails or name/URL disagree (e.g.
+    # campaign duplicated from Amazon to Shopify but kept the old name).
+    name_amazon_intent: bool = False
+    name_market_hint: str = "unknown"     # AE | IN | unknown
+    destination_consistency: str = "n/a"  # match | name_only | url_only | n/a
 
 
 @dataclass
@@ -187,6 +193,11 @@ class MetaAccountHierarchy:
     creative_diversity: dict = field(default_factory=dict)
     # Destination-mix breakdown across the analysed ads (engine-level data)
     destination_mix: dict = field(default_factory=dict)
+    # URL-vs-name cross-evidence summary. Surfaces operational drift like
+    # "campaign named final_retargeting|_amazon_uae but its ads point at
+    # theayurpet.store/products/..." — which a URL-only or name-only view
+    # both miss.
+    destination_mismatches: dict = field(default_factory=dict)
     # Amazon halo at account + per-ASIN level. Populated only when the
     # store has STORE_MAP_ACCOUNTS configured (today: Ayurpet only).
     # Empty dict for brands without — analyst then ignores the halo
@@ -264,13 +275,20 @@ async def decompose_meta_account(
     for u in short_links:
         resolved[u] = await _resolve_short_url(u)
 
-    from ads_agent.meta.destinations import classify_destination, parse_asin
+    from ads_agent.meta.destinations import (
+        classify_destination, classify_name, cross_check, parse_asin,
+    )
 
     ads_by_adset: dict[str, list[AdRow]] = {}
     for r in ad_rows:
         raw_dest = dest_map.get(r["ad_id"], "") or ""
         # Use resolved URL when we followed a short link; else raw
         eff_dest = resolved.get(raw_dest, raw_dest)
+        # Name-based intent (cross-evidence layer)
+        nc = classify_name(
+            r.get("campaign_name"), r.get("adset_name"), r.get("ad_name"),
+        )
+        url_dest = classify_destination(eff_dest)
         ad = AdRow(
             ad_id=r["ad_id"], ad_name=r["ad_name"],
             status="", effective_status="",  # lean pull skips these; fine — audit works off numbers
@@ -280,9 +298,12 @@ async def decompose_meta_account(
             purchases=r["purchases"], purchase_value=r["purchase_value"],
             roas=r.get("reported_roas", 0.0),
             days_live=0.0,
-            destination=classify_destination(eff_dest),
+            destination=url_dest,
             destination_url=eff_dest,
             target_asin=parse_asin(eff_dest) or "",
+            name_amazon_intent=nc["amazon_intent"],
+            name_market_hint=nc["market_hint"],
+            destination_consistency=cross_check(url_dest, nc),
         )
         ads_by_adset.setdefault(r.get("adset_id", ""), []).append(ad)
 
@@ -459,6 +480,49 @@ async def decompose_meta_account(
             (d["revenue"] / d["spend"]) if d["spend"] > 0 else 0.0, 2,
         )
 
+    # URL-vs-name mismatch summary (engine-neutral data — methodology for
+    # what to do with it lives per-brand in the playbook).
+    mismatches = {
+        "match":      {"ads": 0, "spend": 0.0},
+        "name_only":  {"ads": 0, "spend": 0.0},  # name says Amazon, URL doesn't
+        "url_only":   {"ads": 0, "spend": 0.0},  # URL says Amazon, name doesn't
+        "n/a":        {"ads": 0, "spend": 0.0},
+    }
+    sample_name_only: list[dict] = []   # surface top offenders for the audit
+    for c in significant:
+        for s in c.ad_sets:
+            for a in s.ads:
+                if a.spend <= 0:
+                    continue
+                bucket = mismatches.setdefault(
+                    a.destination_consistency or "n/a",
+                    {"ads": 0, "spend": 0.0},
+                )
+                bucket["ads"] += 1
+                bucket["spend"] += a.spend
+                if a.destination_consistency == "name_only" and a.spend > 200:
+                    sample_name_only.append({
+                        "ad_id": a.ad_id,
+                        "ad_name": a.ad_name,
+                        "campaign": c.name,
+                        "spend": round(a.spend, 2),
+                        "url": a.destination_url,
+                    })
+    for v in mismatches.values():
+        v["spend"] = round(v["spend"], 2)
+    sample_name_only.sort(key=lambda x: x["spend"], reverse=True)
+    destination_mismatches = {
+        "buckets": mismatches,
+        "name_says_amazon_url_says_shopify_or_other": sample_name_only[:8],
+        "note": (
+            "name_only = campaign/adset/ad name contains Amazon hints but "
+            "the destination URL points at Shopify (or other). Common "
+            "operational drift: campaign duplicated from Amazon to Shopify "
+            "but the name was kept. Treat the URL as truth for halo math; "
+            "treat the name as a flag for ops review."
+        ),
+    }
+
     # Amazon halo — only fires for slugs configured in STORE_MAP_ACCOUNTS
     # (today: ayurpet-ind, ayurpet-global). Other brands get an empty dict
     # and their analyst prompt won't reference the halo at all.
@@ -532,6 +596,7 @@ async def decompose_meta_account(
         },
         creative_diversity=diversity,
         destination_mix=destination_mix,
+        destination_mismatches=destination_mismatches,
         amazon_halo=halo,
     )
 

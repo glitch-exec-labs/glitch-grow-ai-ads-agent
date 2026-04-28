@@ -113,6 +113,16 @@ async def meta_audit_node(state: dict) -> dict:
             f"_⚠ {halo_downgrades} action(s) downgraded for unverified halo "
             f"citations — see [HALO_UNVERIFIED] tags in rationales below_\n"
         )
+    # Surface name-vs-URL drift so operators catch misnamed campaigns without
+    # reading the whole audit body.
+    mismatches = (hierarchy.destination_mismatches or {}).get("buckets", {})
+    name_only = mismatches.get("name_only", {}) or {}
+    if name_only.get("spend", 0) > 0:
+        header += (
+            f"_⚠ {name_only['ads']} ad(s) / {name_only['spend']:,.0f} "
+            f"{hierarchy.summary.currency} have *Amazon-sounding names but "
+            f"point at Shopify URLs* — campaign drift; see destination_mismatches_\n"
+        )
     header += "\n"
 
     # Health Score banner — terse, scannable

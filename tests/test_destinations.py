@@ -310,3 +310,54 @@ def test_halo_citation_accepts_campaign_blended_value():
     }
     n = _verify_halo_citations(actions, hierarchy)
     assert n == 0
+
+
+# ----- Name-based intent + cross-evidence ----------------------------------
+
+def test_classify_name_amazon_hits():
+    from ads_agent.meta.destinations import classify_name
+    assert classify_name("UAE - AMAZON - GoodGut")["amazon_intent"] is True
+    assert classify_name("India-GG-Amazon - convesrions")["amazon_intent"] is True
+    assert classify_name("HOJ_Luna_NewAmazon")["amazon_intent"] is True
+    assert classify_name("final_retargeting| _amazon_uae - Copy")["amazon_intent"] is True
+    # Negative
+    assert classify_name("RC| GG+ Dubai Custom Audience | 5/02/26")["amazon_intent"] is False
+    assert classify_name("fitoor -UAE- CoolCalm - Copy")["amazon_intent"] is False
+
+
+def test_classify_name_market_hint():
+    from ads_agent.meta.destinations import classify_name
+    assert classify_name("UAE - HOJ - 10thApril")["market_hint"] == "AE"
+    assert classify_name("Dubai retargeting")["market_hint"] == "AE"
+    assert classify_name("fitoor -UAE-")["market_hint"] == "AE"  # fitoor is Hindi/Urdu UAE-targeted
+    assert classify_name("India-GG-Amazon")["market_hint"] == "IN"
+    assert classify_name("Mumbai launch test")["market_hint"] == "IN"
+    assert classify_name("RC| GG+ Custom Audience")["market_hint"] == "unknown"
+
+
+def test_classify_name_amz_subtokens_no_false_positive():
+    """'IN' as a token shouldn't fire on every English word containing 'in'."""
+    from ads_agent.meta.destinations import classify_name
+    assert classify_name("Stunning kitchen launch")["market_hint"] == "unknown"
+    assert classify_name("Holiday Inn ad")["market_hint"] == "unknown"
+
+
+def test_cross_check_match_and_drift():
+    from ads_agent.meta.destinations import cross_check
+    assert cross_check("amazon", {"amazon_intent": True}) == "match"
+    assert cross_check("shopify-global", {"amazon_intent": True}) == "name_only"
+    assert cross_check("amazon", {"amazon_intent": False}) == "url_only"
+    assert cross_check("shopify-global", {"amazon_intent": False}) == "n/a"
+
+
+def test_adrow_default_name_signals():
+    from ads_agent.agent.analysis.meta_decomposer import AdRow
+    a = AdRow(
+        ad_id="1", ad_name="x", status="", effective_status="",
+        spend=1, impressions=1, clicks=1, ctr=0, cpc=0, cpm=0,
+        frequency=0, reach=0, purchases=0, purchase_value=0, roas=0,
+        days_live=0,
+    )
+    assert a.name_amazon_intent is False
+    assert a.name_market_hint == "unknown"
+    assert a.destination_consistency == "n/a"
