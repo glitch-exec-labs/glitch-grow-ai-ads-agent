@@ -19,22 +19,11 @@ import asyncpg
 
 from ads_agent.actions.models import ACTION_TO_MCP
 from ads_agent.actions.notifier import post_text
-from ads_agent.map.mcp_client import call_tool as map_call_tool
+from ads_agent.amazon.ads_api import list_resources as native_list_resources
+from ads_agent.amazon.mutations import call_native as native_amazon_call
 from ads_agent.meta.mcp_client import call_tool as meta_call
 
 log = logging.getLogger(__name__)
-
-
-async def _map_call(tool: str, args: dict) -> Any:
-    """MAP client returns (data, plan_gated). Unwrap here so executor sees
-    the same shape as the Meta client — raise on plan-gate."""
-    data, gated = await map_call_tool(tool, args)
-    if gated:
-        raise RuntimeError(
-            "MAP plan inactive — Amazon action cannot execute. "
-            "Upgrade MAP AI Connect to resume."
-        )
-    return data
 
 
 async def _fetch_prior_state(action_kind: str, target_id: str, params: dict) -> dict[str, Any]:
@@ -45,31 +34,19 @@ async def _fetch_prior_state(action_kind: str, target_id: str, params: dict) -> 
         if action_kind == "pause_ad":
             return await meta_call("get_ad_details", {"ad_id": target_id})
         if action_kind == "amazon_pause_ad":
-            # Pull current sp_product_ads state for this ad's campaign —
-            # confirm the target is still enabled before we pause it.
-            # MAP requires filters nested under "filters".
-            return await _map_call("list_resources", {
-                "integration_id": params.get("integration_id"),
-                "account_id":     params.get("account_id"),
-                "resource_type":  "sp_product_ads",
-                "filters": {
-                    "campaign_id":  params.get("campaign_id"),
-                    "state_filter": "ENABLED",
-                },
-            })
+            data, _ = await native_list_resources(
+                slug=params.get("slug") or params.get("store_slug"),
+                resource_type="sp_product_ads",
+                campaign_id=params.get("campaign_id"),
+            )
+            return data
         if action_kind == "amazon_add_negative_keyword":
-            # Negative keywords are additive — prior state snapshots existing
-            # negatives in the same ad group so the no-op guard can detect
-            # duplicates. MAP requires filters nested.
-            return await _map_call("list_resources", {
-                "integration_id": params.get("integration_id"),
-                "account_id":     params.get("account_id"),
-                "resource_type":  "sp_negative_keywords",
-                "filters": {
-                    "campaign_id":  params.get("campaign_id"),
-                    "state_filter": "ENABLED",
-                },
-            })
+            data, _ = await native_list_resources(
+                slug=params.get("slug") or params.get("store_slug"),
+                resource_type="sp_negative_keywords",
+                campaign_id=params.get("campaign_id"),
+            )
+            return data
     except Exception as e:
         log.warning("prior-state fetch failed for %s %s: %s", action_kind, target_id, e)
     return {}
@@ -164,8 +141,9 @@ async def _execute_one(pool: asyncpg.Pool, action: dict) -> None:
     try:
         if client_tag == "meta":
             result = await meta_call(mcp_tool, tool_args)
-        elif client_tag == "map":
-            result = await _map_call(mcp_tool, tool_args)
+        elif client_tag in ("amazon", "map"):  # "map" tag retained for old rows
+            # Native LWA path. Caller's args dict must include `slug`.
+            result = await native_amazon_call(mcp_tool, tool_args)
         else:
             raise RuntimeError(f"unknown mcp client_tag {client_tag!r} for action_kind {kind!r}")
     except Exception as e:

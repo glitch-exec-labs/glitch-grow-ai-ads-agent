@@ -45,8 +45,35 @@ import httpx
 from ads_agent.actions.guardrails import GuardrailViolation
 from ads_agent.actions.models import ActionProposal, AYURPET_CHAT_ID
 from ads_agent.actions.notifier import TelegramNotifyError, post_proposal
-from ads_agent.config import STORE_MAP_ACCOUNTS
-from ads_agent.map.mcp_client import MapMcpError, ask_analyst, call_tool as map_call
+from ads_agent.amazon.ads_api import (
+    AmazonAdsError as MapMcpError,    # alias keeps existing except-clauses working
+    list_resources,
+    profile_id_for,
+)
+
+
+# ask_analyst was MAP's MCP-side AI report query. Native Amazon Ads has
+# no equivalent (Reports v3 returns raw rows; the methodology analyst we
+# ship in /amazon_recs is the real replacement). For backward compat the
+# planner's Amazon-waste-finding path now no-ops; operators should run
+# /amazon_recs which goes through the methodology analyst.
+async def ask_analyst(*_args, **_kwargs):
+    """No-op stub — MAP's analyst is gone; use /amazon_recs instead."""
+    return {"_replaced_by": "amazon_recs methodology analyst", "data": []}
+
+
+async def map_call(tool: str, args: dict):
+    """Backward-compat shim — routes list_resources through the native client."""
+    if tool == "list_resources":
+        # Caller passes integration_id + account_id (legacy MAP shape) — these
+        # are now derivable from the slug. We can't recover slug from the
+        # MAP-shaped args alone, so the planner's Amazon path is now disabled
+        # until /scan_amazon is re-wired to pass slug.
+        raise MapMcpError(
+            "map_call('list_resources', ...) deprecated — pass slug to "
+            "ads_agent.amazon.ads_api.list_resources directly"
+        )
+    raise MapMcpError(f"unsupported legacy tool: {tool}")
 
 log = logging.getLogger(__name__)
 
@@ -379,56 +406,47 @@ async def plan_amazon_for_store(
         )
         return 0
 
-    cfg = STORE_MAP_ACCOUNTS.get(store_slug)
-    if not cfg:
-        log.info("no MAP mapping for %s — skipping Amazon plan", store_slug)
-        return 0
-
+    # Native LWA path — confirm slug has an Amazon Ads profile mapped
     try:
-        data = await ask_analyst(cfg["integration_id"], cfg["account_id"], _AMAZON_PLAN_PROMPT)
+        await profile_id_for(store_slug)
     except MapMcpError as e:
-        log.warning("ask_analyst failed for %s: %s", store_slug, e)
+        log.info("no Amazon Ads profile mapped for %s — skipping: %s", store_slug, e)
         return 0
 
-    if data.get("_plan_gated"):
-        log.warning("MAP plan inactive — Amazon plan for %s skipped", store_slug)
-        return 0
+    # MAP's `ask_analyst` waste-finding prompt has no native equivalent —
+    # native Reports v3 returns raw rows; the AI-style "give me 5 waste
+    # targets" lives in the methodology analyst (run via /amazon_recs).
+    # The planner's standalone Amazon path is now no-op; operators should
+    # use /scan_amazon → which we kept working as a /amazon_recs trigger.
+    log.info(
+        "Amazon planner now no-ops — `ask_analyst` retired; "
+        "operators should use /amazon_recs (methodology analyst) instead. "
+        "Returning 0 proposals for %s.", store_slug,
+    )
+    return 0
 
-    rows = _amazon_rows_from_analyst(data)
-    if not rows:
-        log.info("MAP analyst returned 0 actionable rows for %s", store_slug)
-        return 0
-
-    # Analyst usually returns ASIN + ad_group_id for pause_ad rows but NOT
-    # ad_id. Look up ad_ids per-campaign via list_resources. MAP requires a
-    # campaign_id filter on sp_product_ads, so we loop by distinct campaign.
-    # Cache per-campaign results within this run.
-    ad_lookup: dict[tuple[str, str], str] = {}  # (adGroupId, asin) → adId
+    # ── below code unreachable but kept for reference until /scan_amazon
+    # is rewired to call the methodology analyst directly ──
+    # Native lookup of product_ads by campaign, used to resolve ad_id from
+    # (adGroupId, asin) when a proposal row lacks ad_id.
+    ad_lookup: dict[tuple[str, str], str] = {}
     campaign_cache: set[str] = set()
+    rows: list[dict] = []  # placeholder so the rest type-checks
 
     async def _hydrate_campaign(campaign_id: str) -> None:
-        """One-shot fetch of all enabled product ads in a campaign."""
         if campaign_id in campaign_cache or not campaign_id:
             return
         campaign_cache.add(campaign_id)
         try:
-            data_ads, gated = await map_call("list_resources", {
-                "integration_id": cfg["integration_id"],
-                "account_id":     cfg["account_id"],
-                "resource_type":  "sp_product_ads",
-                # MAP requires filters nested under "filters", not top-level
-                "filters": {
-                    "campaign_id":  campaign_id,
-                    "state_filter": "ENABLED",
-                },
-            })
-            if gated or not isinstance(data_ads, dict):
-                return
-            for item in data_ads.get("items", []):
+            data_ads, _ = await list_resources(
+                slug=store_slug, resource_type="sp_product_ads",
+                campaign_id=campaign_id, state_filter="ENABLED",
+            )
+            for item in (data_ads or {}).get("items", []):
                 key = (str(item.get("adGroupId")), str(item.get("asin") or ""))
                 ad_lookup[key] = str(item.get("adId"))
         except MapMcpError as e:
-            log.warning("product-ads lookup failed for campaign %s: %s", campaign_id, e)
+            log.warning("native product-ads lookup failed for campaign %s: %s", campaign_id, e)
 
     # Resolve ad_id for each pause_ad row that doesn't already have one
     for r in rows:

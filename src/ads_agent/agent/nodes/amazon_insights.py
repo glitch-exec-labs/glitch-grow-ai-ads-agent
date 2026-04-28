@@ -165,8 +165,8 @@ async def amazon_insights_node(state: dict) -> dict:
         else:
             lines.append("*Amazon Ads:* no data yet in the window")
             lines.append(
-                "  — neither MAP nor Airbyte returned data. Check MAP plan status "
-                "or `airbyte_amazon.sponsored_*` tables."
+                "  — neither native LWA nor Airbyte returned data. Check token "
+                "in `ads_agent.amazon_oauth_tokens` or `airbyte_amazon.sponsored_*` tables."
             )
         lines.append("")
 
@@ -177,10 +177,10 @@ async def amazon_insights_node(state: dict) -> dict:
         from datetime import datetime, timezone
         age_h = (datetime.now(timezone.utc) - last_synced).total_seconds() / 3600
         footer_bits.append(f"Seller: Airbyte ({age_h:.1f}h old)")
-    if used_source == "map":
-        footer_bits.append("Ads: MAP (≤1h old, authoritative)")
+    if used_source == "amazon_native":
+        footer_bits.append("Ads: native LWA (≤1h old, authoritative)")
     elif used_source == "airbyte-fallback":
-        footer_bits.append("Ads: Airbyte fallback (MAP unreachable — numbers may be ~50% low)")
+        footer_bits.append("Ads: Airbyte fallback (native unreachable)")
     if footer_bits:
         lines.append("_" + " · ".join(footer_bits) + "_")
 
