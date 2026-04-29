@@ -133,11 +133,9 @@ async def attribution_node(state: dict) -> dict:
         )
 
         # Shopify-side Meta from meta_ads_daily (destination matches this store's
-        # custom domain). Hardcoded per-slug mapping — simple and explicit.
-        shopify_domain = {
-            "ayurpet-ind":    "theayurpet.com",
-            "ayurpet-global": "theayurpet.store",
-        }.get(slug)
+        # custom domain). Resolved via STORE_BRAND_REGISTRY_JSON.
+        from ads_agent.brand_registry import shop_host_for
+        shopify_domain = shop_host_for(slug) or None
 
         shopify_row = None
         if shopify_domain:
@@ -177,8 +175,12 @@ async def attribution_node(state: dict) -> dict:
 
         # Daily time series joining Amazon traffic (sessions, units, gross) with
         # Meta-to-Amazon spend per day. Drives the sessions-delta computation.
-        amz_host = 'amazon.in' if slug == 'ayurpet-ind' else 'amazon.ae'
-        fx = 1.0 if slug == 'ayurpet-ind' else AED_TO_INR
+        from ads_agent.brand_registry import amazon_marketplace_for, currency_for
+        amz_host = amazon_marketplace_for(slug) or 'amazon.com'
+        # Reporting currency normalization: native → INR (legacy reporting unit
+        # for portfolio rollup). Add per-currency rates to FX_TO_INR as needed.
+        FX_TO_INR = {"INR": 1.0, "AED": AED_TO_INR}
+        fx = FX_TO_INR.get(currency_for(slug, "USD"), 1.0)
         daily_series = await conn.fetch(
             """WITH amz AS (
                    SELECT date, sessions, units_ordered, gross
@@ -223,7 +225,7 @@ async def attribution_node(state: dict) -> dict:
             f"this store's Seller Central source isn't configured."
         )}
 
-    ccy = agg["currency"] or ("INR" if slug == "ayurpet-ind" else "AED")
+    ccy = agg["currency"] or currency_for(slug, "USD")
     amz_gross = float(agg["amz_gross"] or 0)
     sp_sales = float(agg["sp_sales"] or 0)
     sp_cost = float(agg["sp_cost"] or 0)

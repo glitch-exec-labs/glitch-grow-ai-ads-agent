@@ -72,7 +72,7 @@ productads_dedup AS (
 amz_orders_asin AS (
     SELECT
         ("PurchaseDate" AT TIME ZONE 'UTC')::date AS date,
-        'ayurpet-ind'::text                        AS store_slug,
+        'store-a'::text                        AS store_slug,
         oi."ASIN"                                  AS asin,
         COUNT(DISTINCT oi."AmazonOrderId")         AS amz_orders,
         SUM(oi."QuantityOrdered")                  AS amz_units,
@@ -88,7 +88,7 @@ amz_orders_asin AS (
 
     SELECT
         ("PurchaseDate" AT TIME ZONE 'UTC')::date,
-        'ayurpet-global'::text,
+        'store-b'::text,
         oi."ASIN",
         COUNT(DISTINCT oi."AmazonOrderId"),
         SUM(oi."QuantityOrdered"),
@@ -106,8 +106,8 @@ amz_sp_asin AS (
     SELECT
         pa."date"::date AS date,
         CASE pa."profileId"
-            WHEN 2849798098183833 THEN 'ayurpet-ind'
-            WHEN 75561079299164   THEN 'ayurpet-global'
+            WHEN 2849798098183833 THEN 'store-a'
+            WHEN 75561079299164   THEN 'store-b'
         END AS store_slug,
         pa."advertisedAsin" AS asin,
         SUM(pa."cost")        AS sp_cost,
@@ -129,8 +129,8 @@ meta_to_amazon AS (
     SELECT
         date,
         CASE
-            WHEN destination_url ~* 'amazon\.in' THEN 'ayurpet-ind'
-            WHEN destination_url ~* 'amazon\.ae' THEN 'ayurpet-global'
+            WHEN destination_url ~* 'amazon\.in' THEN 'store-a'
+            WHEN destination_url ~* 'amazon\.ae' THEN 'store-b'
         END AS store_slug,
         (regexp_match(destination_url, 'dp/([A-Z0-9]{10})'))[1] AS asin,
         SUM(spend)       AS meta_spend,
@@ -197,8 +197,8 @@ SELECT
     CASE WHEN COALESCE(m.meta_spend, 0) > 0
          THEN GREATEST(COALESCE(o.amz_gross, 0) - COALESCE(sp.sp_sales1d, 0), 0)
               * CASE s.store_slug
-                    WHEN 'ayurpet-ind'    THEN 1.0
-                    WHEN 'ayurpet-global' THEN 22.7   -- AED → INR, 2026-04-19 rate
+                    WHEN 'store-a'    THEN 1.0
+                    WHEN 'store-b' THEN 22.7   -- AED → INR, 2026-04-19 rate
                     ELSE 1.0
                 END
          ELSE 0
@@ -209,8 +209,8 @@ SELECT
     CASE WHEN COALESCE(m.meta_spend, 0) > 0
          THEN (GREATEST(COALESCE(o.amz_gross, 0) - COALESCE(sp.sp_sales1d, 0), 0)
                * CASE s.store_slug
-                     WHEN 'ayurpet-ind'    THEN 1.0
-                     WHEN 'ayurpet-global' THEN 22.7
+                     WHEN 'store-a'    THEN 1.0
+                     WHEN 'store-b' THEN 22.7
                      ELSE 1.0
                  END)
               / m.meta_spend
@@ -224,7 +224,7 @@ SELECT
 
     -- Currency resolved from orders; falls back to store-default.
     COALESCE(o.currency,
-             CASE s.store_slug WHEN 'ayurpet-ind' THEN 'INR' ELSE 'AED' END) AS currency
+             CASE s.store_slug WHEN 'store-a' THEN 'INR' ELSE 'AED' END) AS currency
 FROM spine s
 LEFT JOIN amz_orders_asin  o  USING (date, store_slug, asin)
 LEFT JOIN amz_sp_asin      sp USING (date, store_slug, asin)

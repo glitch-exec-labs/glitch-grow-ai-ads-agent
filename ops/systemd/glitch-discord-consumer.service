@@ -10,7 +10,7 @@ Group=support
 WorkingDirectory=/home/support/glitch-grow-ads-agent
 EnvironmentFile=/home/support/glitch-grow-ads-agent/.env
 EnvironmentFile=-/home/support/.config/glitch-discord/env
-Environment="DISCORD_CONSUMER_CHANNELS=grow-ads,glitch-x-ayurpet,glitch-x-urban"
+Environment="DISCORD_CONSUMER_CHANNELS=grow-ads,glitch-x-<client>,glitch-x-urban"
 ExecStart=/home/support/glitch-grow-ads-agent/.venv/bin/python -m ads_agent.discord.inbox_consumer
 Restart=on-failure
 RestartSec=5

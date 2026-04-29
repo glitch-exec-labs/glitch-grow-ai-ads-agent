@@ -46,12 +46,9 @@ def _ccy_for(country: str) -> str:
 
 
 def _brand_for(slug: str) -> str:
-    """Map store_slug → brand name for playbook lookup. <client>'s two
-    slugs share the same brand."""
-    if slug.startswith("ayurpet"): return "ayurpet"
-    if slug == "mokshya":          return "mokshya"
-    if slug in {"urban", "storico", "classicoo", "trendsetters"}: return "urban"
-    return slug
+    """Map store_slug → brand playbook key via STORE_BRAND_REGISTRY_JSON."""
+    from ads_agent.brand_registry import brand_for
+    return brand_for(slug)
 
 
 async def _format_drilldown(

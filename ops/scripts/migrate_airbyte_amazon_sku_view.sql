@@ -1,6 +1,6 @@
 -- Airbyte Amazon SKU-level daily P&L view (v1).
 --
--- Purpose: `/amazon ayurpet-ind 30 --by-sku` — top SKU contribution by units,
+-- Purpose: `/amazon store-a 30 --by-sku` — top SKU contribution by units,
 -- gross, and ad-spend/ad-sales. Complements amazon_daily_v (store-grain) with
 -- one row per (date × store × seller_sku).
 --
@@ -78,7 +78,7 @@ ads_meta_dedup AS (
 seller_items AS (
     SELECT
         ("PurchaseDate" AT TIME ZONE 'UTC')::date    AS date,
-        'ayurpet-ind'::text                          AS store_slug,
+        'store-a'::text                          AS store_slug,
         'A21TJRUUN4KGV'::text                        AS account_id,
         oi."SellerSKU"                               AS seller_sku,
         oi."ASIN"                                    AS asin_ordered,
@@ -95,7 +95,7 @@ seller_items AS (
 
     SELECT
         ("PurchaseDate" AT TIME ZONE 'UTC')::date,
-        'ayurpet-global'::text,
+        'store-b'::text,
         'A2VIGQ35RCS4UG'::text,
         oi."SellerSKU",
         oi."ASIN",
@@ -120,11 +120,11 @@ seller_agg AS (
 ),
 -- ── Listings metadata (title + canonical asin1) per region ─────────────────
 listings AS (
-    SELECT 'ayurpet-ind'::text AS store_slug,
+    SELECT 'store-a'::text AS store_slug,
            seller_sku, asin1, item_name
     FROM listings_in_dedup
     UNION ALL
-    SELECT 'ayurpet-global'::text,
+    SELECT 'store-b'::text,
            seller_sku, asin1, item_name
     FROM listings_ae_dedup
 ),
@@ -133,8 +133,8 @@ ads_agg AS (
     SELECT
         pa."date"::date                              AS date,
         CASE pa."profileId"
-            WHEN 2849798098183833 THEN 'ayurpet-ind'
-            WHEN 75561079299164   THEN 'ayurpet-global'
+            WHEN 2849798098183833 THEN 'store-a'
+            WHEN 75561079299164   THEN 'store-b'
             ELSE 'unknown'
         END                                          AS store_slug,
         a."sku"                                      AS seller_sku,

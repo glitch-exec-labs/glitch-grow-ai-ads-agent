@@ -1,11 +1,31 @@
-"""Destination classification + ASIN parsing + Ayurpet-only methodology
-fence. The engine-level helpers are brand-neutral; the M40/RECLAIM
-methodology lives only in the Ayurpet playbook brief — verify it
-doesn't leak into other brand briefs.
+"""Destination classification + ASIN parsing + brand-fence checks.
+
+The engine-level helpers are brand-neutral; brand-specific methodology
+(M40/RECLAIM, halo audits) lives only in private playbook briefs —
+verify the engine doesn't leak it into other brand briefs.
 """
-from __future__ import annotations
+import json
 
 import pytest
+
+
+def _seed_registry(monkeypatch):
+    """Inject a 2-store registry fixture before any classify_destination
+    call that depends on registry-driven `shopify-<market>` buckets."""
+    monkeypatch.setenv(
+        "STORE_BRAND_REGISTRY_JSON",
+        json.dumps({
+            "store-a": {"brand_key": "lighthouse", "primary_market": "IN",
+                        "shop_host": "example-a.com", "amazon_marketplace": "amazon.in",
+                        "currency": "INR"},
+            "store-b": {"brand_key": "lighthouse", "primary_market": "AE",
+                        "shop_host": "example-b.store", "amazon_marketplace": "amazon.ae",
+                        "currency": "AED"},
+        }),
+    )
+    from ads_agent.brand_registry import reset_registry
+    reset_registry()
+from __future__ import annotations
 
 
 # ----- destinations module --------------------------------------------------
@@ -23,10 +43,12 @@ def test_classify_amazon_shortlink():
     assert classify_destination("https://amzn.to/abc123") == "amazon"
 
 
-def test_classify_shopify_buckets():
+def test_classify_shopify_buckets(monkeypatch):
+    """Registry-driven: shopify-<market> bucket comes from primary_market."""
+    _seed_registry(monkeypatch)
     from ads_agent.meta.destinations import classify_destination
-    assert classify_destination("https://theayurpet.store/products/x") == "shopify-global"
-    assert classify_destination("https://theayurpet.com/products/x") == "shopify-ind"
+    assert classify_destination("https://example-a.com/products/x") == "shopify-in"
+    assert classify_destination("https://example-b.store/products/x") == "shopify-ae"
     assert classify_destination("https://random-other-brand.myshopify.com/x") == "shopify-other"
 
 
@@ -120,15 +142,30 @@ def test_hierarchy_carries_amazon_halo_field():
     assert h.destination_mix == {}
 
 
-# ----- Ayurpet-only methodology fence --------------------------------------
+# ----- Brand-specific playbook fence ---------------------------------------
 
-def test_ayurpet_brief_has_m40_and_reclaim():
-    from ads_agent.playbook import node_brief
-    brief = node_brief("meta_audit", "ayurpet")
-    assert brief, "Ayurpet brief missing"
-    for tok in ("M40", "RECLAIM", "amazon_halo", "destination = amazon",
-                "target_asin_halo_roas"):
-        assert tok in brief, f"ayurpet brief missing token {tok!r}"
+def test_amazon_halo_brand_brief_carries_methodology():
+    """If a private playbook with `amazon_halo` methodology is mounted,
+    its meta_audit brief must include the M40 / RECLAIM tokens. Skipped
+    when no private playbook is present (open-source / CI default)."""
+    from pathlib import Path
+
+    from ads_agent.playbook import PLAYBOOK_DIR, node_brief
+    if not PLAYBOOK_DIR.exists():
+        pytest.skip("no playbook dir")
+    md_files = list(Path(PLAYBOOK_DIR).glob("*.md"))
+    halo_brands = []
+    for md in md_files:
+        brief = node_brief("meta_audit", md.stem)
+        if brief and "amazon_halo" in brief:
+            halo_brands.append(md.stem)
+    if not halo_brands:
+        pytest.skip("no playbook brand opts into amazon_halo methodology")
+    for brand in halo_brands:
+        brief = node_brief("meta_audit", brand)
+        for tok in ("M40", "RECLAIM", "amazon_halo", "destination = amazon",
+                    "target_asin_halo_roas"):
+            assert tok in brief, f"{brand} brief missing token {tok!r}"
 
 
 def test_adrow_carries_halo_stamp_fields():
@@ -202,25 +239,33 @@ def test_halo_stamping_picks_correct_asin_row():
     assert ads[2].target_asin_meta_orders == 0
 
 
-def test_other_brand_briefs_do_not_have_m40_or_reclaim():
-    """RECLAIM + M40 is Ayurpet-only tuning. Urban / Mokshya MUST NOT
-    inherit it — they don't run Amazon halo."""
-    from ads_agent.playbook import node_brief
-    for brand in ("urban", "mokshya"):
+def test_non_halo_brand_briefs_do_not_leak_methodology():
+    """RECLAIM + M40 is opted-in per-brand. Brands that don't run an
+    Amazon halo MUST NOT inherit those tokens. Skipped when no playbooks
+    are mounted."""
+    from pathlib import Path
+
+    from ads_agent.playbook import PLAYBOOK_DIR, node_brief
+    if not PLAYBOOK_DIR.exists():
+        pytest.skip("no playbook dir")
+    for md in Path(PLAYBOOK_DIR).glob("*.md"):
+        brand = md.stem
         brief = node_brief("meta_audit", brand)
-        assert brief, f"{brand} brief missing"
+        if not brief or "amazon_halo" in brief:
+            continue  # opted-in; skip
         assert "M40" not in brief, f"{brand} brief leaked M40"
         assert "RECLAIM" not in brief, f"{brand} brief leaked RECLAIM"
-        assert "amazon_halo" not in brief, f"{brand} brief leaked amazon_halo"
 
 
 def test_global_checklist_does_not_have_m40():
-    """M40 is Ayurpet-tuned; the global checklist (M01-M35) must not
-    advertise it as a generic check."""
+    """M40 is brand-tuned methodology; the global checklist (M01-M35)
+    must not advertise it as a generic check. Skipped if no checklist
+    ref is shipped."""
     from ads_agent.playbook import load_ref
     chk = load_ref("meta-audit-checklist")
-    assert chk, "global checklist missing"
-    assert "M40" not in chk, "global checklist leaked M40 — that's Ayurpet-only"
+    if not chk:
+        pytest.skip("no meta-audit-checklist ref shipped")
+    assert "M40" not in chk, "global checklist leaked M40 — must stay brand-private"
 
 
 # ----- Phase A: campaign-level halo stamping -------------------------------

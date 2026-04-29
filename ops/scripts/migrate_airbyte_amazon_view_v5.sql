@@ -52,15 +52,15 @@ profiles AS (
 SELECT
     ("PurchaseDate" AT TIME ZONE 'UTC')::date                            AS date,
     CASE "MarketplaceId"
-        WHEN 'A21TJRUUN4KGV' THEN 'ayurpet-ind'
-        WHEN 'A2VIGQ35RCS4UG' THEN 'ayurpet-global'
-        WHEN 'ATVPDKIKX0DER'  THEN 'ayurpet-global'
-        WHEN 'A2EUQ1WTGCTBG2' THEN 'ayurpet-global'
-        WHEN 'A1AM78C64UM0Y8' THEN 'ayurpet-global'
-        WHEN 'A1F83G8C2ARO7P' THEN 'ayurpet-global'
-        WHEN 'A28R8C7NBKEWEA' THEN 'ayurpet-global'
-        WHEN 'A1RKKUPIHCS9HS' THEN 'ayurpet-global'
-        WHEN 'A1C3SOZRARQ6R3' THEN 'ayurpet-global'
+        WHEN 'A21TJRUUN4KGV' THEN 'store-a'
+        WHEN 'A2VIGQ35RCS4UG' THEN 'store-b'
+        WHEN 'ATVPDKIKX0DER'  THEN 'store-b'
+        WHEN 'A2EUQ1WTGCTBG2' THEN 'store-b'
+        WHEN 'A1AM78C64UM0Y8' THEN 'store-b'
+        WHEN 'A1F83G8C2ARO7P' THEN 'store-b'
+        WHEN 'A28R8C7NBKEWEA' THEN 'store-b'
+        WHEN 'A1RKKUPIHCS9HS' THEN 'store-b'
+        WHEN 'A1C3SOZRARQ6R3' THEN 'store-b'
         ELSE 'unknown'
     END                                                                  AS store_slug,
     "MarketplaceId"                                                      AS account_id,
@@ -87,15 +87,15 @@ UNION ALL
 SELECT
     ("PurchaseDate" AT TIME ZONE 'UTC')::date                            AS date,
     CASE "MarketplaceId"
-        WHEN 'A21TJRUUN4KGV' THEN 'ayurpet-ind'
-        WHEN 'A2VIGQ35RCS4UG' THEN 'ayurpet-global'
-        WHEN 'ATVPDKIKX0DER'  THEN 'ayurpet-global'
-        WHEN 'A2EUQ1WTGCTBG2' THEN 'ayurpet-global'
-        WHEN 'A1AM78C64UM0Y8' THEN 'ayurpet-global'
-        WHEN 'A1F83G8C2ARO7P' THEN 'ayurpet-global'
-        WHEN 'A28R8C7NBKEWEA' THEN 'ayurpet-global'
-        WHEN 'A1RKKUPIHCS9HS' THEN 'ayurpet-global'
-        WHEN 'A1C3SOZRARQ6R3' THEN 'ayurpet-global'
+        WHEN 'A21TJRUUN4KGV' THEN 'store-a'
+        WHEN 'A2VIGQ35RCS4UG' THEN 'store-b'
+        WHEN 'ATVPDKIKX0DER'  THEN 'store-b'
+        WHEN 'A2EUQ1WTGCTBG2' THEN 'store-b'
+        WHEN 'A1AM78C64UM0Y8' THEN 'store-b'
+        WHEN 'A1F83G8C2ARO7P' THEN 'store-b'
+        WHEN 'A28R8C7NBKEWEA' THEN 'store-b'
+        WHEN 'A1RKKUPIHCS9HS' THEN 'store-b'
+        WHEN 'A1C3SOZRARQ6R3' THEN 'store-b'
         ELSE 'unknown'
     END                                                                  AS store_slug,
     "MarketplaceId"                                                      AS account_id,
@@ -122,15 +122,15 @@ UNION ALL
 SELECT
     cd."date"::date                                                      AS date,
     CASE (p."accountInfo"->>'marketplaceStringId')
-        WHEN 'A21TJRUUN4KGV' THEN 'ayurpet-ind'
-        WHEN 'A2VIGQ35RCS4UG' THEN 'ayurpet-global'
-        WHEN 'ATVPDKIKX0DER'  THEN 'ayurpet-global'
-        WHEN 'A2EUQ1WTGCTBG2' THEN 'ayurpet-global'
-        WHEN 'A1AM78C64UM0Y8' THEN 'ayurpet-global'
-        WHEN 'A1F83G8C2ARO7P' THEN 'ayurpet-global'
-        WHEN 'A28R8C7NBKEWEA' THEN 'ayurpet-global'
-        WHEN 'A1RKKUPIHCS9HS' THEN 'ayurpet-global'
-        WHEN 'A1C3SOZRARQ6R3' THEN 'ayurpet-global'
+        WHEN 'A21TJRUUN4KGV' THEN 'store-a'
+        WHEN 'A2VIGQ35RCS4UG' THEN 'store-b'
+        WHEN 'ATVPDKIKX0DER'  THEN 'store-b'
+        WHEN 'A2EUQ1WTGCTBG2' THEN 'store-b'
+        WHEN 'A1AM78C64UM0Y8' THEN 'store-b'
+        WHEN 'A1F83G8C2ARO7P' THEN 'store-b'
+        WHEN 'A28R8C7NBKEWEA' THEN 'store-b'
+        WHEN 'A1RKKUPIHCS9HS' THEN 'store-b'
+        WHEN 'A1C3SOZRARQ6R3' THEN 'store-b'
         ELSE 'unknown'
     END                                                                  AS store_slug,
     (p."accountInfo"->>'marketplaceStringId')                            AS account_id,

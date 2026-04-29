@@ -51,8 +51,8 @@ GRANT SELECT ON ads_agent.amazon_daily_v TO shopify_app;
 -- SELECT
 --     report_date::date                                       AS date,
 --     CASE profile_id
---         WHEN 'A21TJRUUN4KGV' THEN 'ayurpet-ind'
---         WHEN 'A2VIGQ35RCS4UG' THEN 'ayurpet-global'
+--         WHEN 'A21TJRUUN4KGV' THEN 'store-a'
+--         WHEN 'A2VIGQ35RCS4UG' THEN 'store-b'
 --         ELSE 'unknown'
 --     END                                                     AS store_slug,
 --     profile_id                                              AS account_id,

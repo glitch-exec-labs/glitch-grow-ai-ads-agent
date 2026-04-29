@@ -130,15 +130,15 @@ spine AS (
 SELECT
     s.date,
     CASE s.marketplace_name
-        WHEN 'Amazon.in' THEN 'ayurpet-ind'
-        WHEN 'Amazon.ae' THEN 'ayurpet-global'
-        WHEN 'Amazon.com' THEN 'ayurpet-global'
-        WHEN 'Amazon.co.uk' THEN 'ayurpet-global'
-        WHEN 'Amazon.ca' THEN 'ayurpet-global'
-        WHEN 'Amazon.de' THEN 'ayurpet-global'
-        WHEN 'Amazon.fr' THEN 'ayurpet-global'
-        WHEN 'Amazon.it' THEN 'ayurpet-global'
-        WHEN 'Amazon.es' THEN 'ayurpet-global'
+        WHEN 'Amazon.in' THEN 'store-a'
+        WHEN 'Amazon.ae' THEN 'store-b'
+        WHEN 'Amazon.com' THEN 'store-b'
+        WHEN 'Amazon.co.uk' THEN 'store-b'
+        WHEN 'Amazon.ca' THEN 'store-b'
+        WHEN 'Amazon.de' THEN 'store-b'
+        WHEN 'Amazon.fr' THEN 'store-b'
+        WHEN 'Amazon.it' THEN 'store-b'
+        WHEN 'Amazon.es' THEN 'store-b'
         ELSE 'unknown'
     END                                                        AS store_slug,
     s.marketplace_name                                         AS marketplace,

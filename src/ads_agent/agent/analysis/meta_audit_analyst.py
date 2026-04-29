@@ -252,7 +252,7 @@ def _parse_report(text: str, hierarchy_data: dict | None = None) -> dict:
 async def audit_meta_account(
     hierarchy: MetaAccountHierarchy,
     *,
-    brand: str = "ayurpet",
+    brand: str = "default",
     model_tier: str = "smart",
 ) -> dict:
     """Run the brand-tuned prompt against the decomposed account.

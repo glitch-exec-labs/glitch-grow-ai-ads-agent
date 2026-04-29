@@ -21,7 +21,7 @@ DROP VIEW IF EXISTS ads_agent.amazon_traffic_daily_v;
 CREATE VIEW ads_agent.amazon_traffic_daily_v AS
 SELECT
     date,
-    'ayurpet-ind'::text                                            AS store_slug,
+    'store-a'::text                                            AS store_slug,
     'A21TJRUUN4KGV'::text                                          AS account_id,
     'Amazon.in'::text                                              AS marketplace,
     ("trafficByDate"->>'sessions')::int                            AS sessions,
@@ -47,7 +47,7 @@ UNION ALL
 
 SELECT
     date,
-    'ayurpet-global'::text,
+    'store-b'::text,
     'A2VIGQ35RCS4UG'::text,
     'Amazon.ae'::text,
     ("trafficByDate"->>'sessions')::int,

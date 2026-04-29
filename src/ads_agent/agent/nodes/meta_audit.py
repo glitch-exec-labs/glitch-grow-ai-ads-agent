@@ -20,6 +20,7 @@ import logging
 
 from ads_agent.agent.analysis.meta_audit_analyst import audit_meta_account
 from ads_agent.agent.analysis.meta_decomposer import decompose_meta_account
+from ads_agent.brand_registry import brand_for
 from ads_agent.config import get_store
 from ads_agent.meta.graph_client import MetaGraphError
 
@@ -27,14 +28,8 @@ log = logging.getLogger(__name__)
 
 
 def _brand_for(slug: str) -> str:
-    """Store slug → brand playbook key (for node_brief lookup)."""
-    if slug.startswith("ayurpet"):
-        return "ayurpet"
-    if slug == "mokshya":
-        return "mokshya"
-    if slug in {"urban", "storico", "classicoo", "trendsetters"}:
-        return "urban"
-    return slug
+    """Store slug → playbook brand key, via STORE_BRAND_REGISTRY_JSON."""
+    return brand_for(slug)
 
 
 async def meta_audit_node(state: dict) -> dict:

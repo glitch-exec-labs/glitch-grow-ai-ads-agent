@@ -42,7 +42,7 @@ def test_unknown_command():
 def test_kv_arg_parsing():
     """port_meta_to_tiktok with missing landing should complain about landing+text."""
     from ads_agent.discord.dispatcher import parse_and_run
-    r = _run(parse_and_run("/port_meta_to_tiktok 123 ayurpet-global"))
+    r = _run(parse_and_run("/port_meta_to_tiktok 123 store-b"))
     assert r and "landing=" in r
 
 

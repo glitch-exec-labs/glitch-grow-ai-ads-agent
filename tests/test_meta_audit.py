@@ -26,15 +26,32 @@ def test_imports_and_graph_compiles():
     build_graph()
 
 
-def test_brand_mapping():
+def test_brand_mapping(monkeypatch):
+    """brand_for() is now driven by STORE_BRAND_REGISTRY_JSON.
+    Inject a fixture registry and verify the slug→brand_key resolution."""
+    import json
+    monkeypatch.setenv(
+        "STORE_BRAND_REGISTRY_JSON",
+        json.dumps({
+            "store-a": {"brand_key": "lighthouse", "primary_market": "IN",
+                        "shop_host": "example.com", "amazon_marketplace": "amazon.in",
+                        "currency": "INR"},
+            "store-b": {"brand_key": "lighthouse", "primary_market": "AE",
+                        "shop_host": "example.store", "amazon_marketplace": "amazon.ae",
+                        "currency": "AED"},
+            "store-c": {"brand_key": "alpha", "primary_market": "IN",
+                        "shop_host": "alpha.in", "amazon_marketplace": "amazon.in",
+                        "currency": "INR"},
+        }),
+    )
+    from ads_agent.brand_registry import reset_registry
+    reset_registry()
     from ads_agent.agent.nodes.meta_audit import _brand_for
-    assert _brand_for("ayurpet-ind") == "ayurpet"
-    assert _brand_for("ayurpet-global") == "ayurpet"
-    assert _brand_for("urban") == "urban"
-    assert _brand_for("storico") == "urban"
-    assert _brand_for("classicoo") == "urban"
-    assert _brand_for("trendsetters") == "urban"
-    assert _brand_for("mokshya") == "mokshya"
+    assert _brand_for("store-a") == "lighthouse"
+    assert _brand_for("store-b") == "lighthouse"
+    assert _brand_for("store-c") == "alpha"
+    # Unmapped slug → "default"
+    assert _brand_for("unknown-slug") == "default"
 
 
 def test_analyst_parser_actions():
@@ -74,14 +91,23 @@ Two campaigns, spend 40k INR, ROAS 1.2×.
 
 
 def test_playbook_meta_audit_briefs_resolve():
-    """Every brand we ship for today has a meta_audit brief."""
-    from ads_agent.playbook import node_brief
-    for brand in ("ayurpet", "urban", "mokshya"):
+    """If private playbooks are mounted, they expose meta_audit briefs.
+    Test is a no-op when no playbooks are deployed (open-source / CI default)."""
+    from pathlib import Path
+
+    from ads_agent.playbook import PLAYBOOK_DIR, node_brief
+    if not PLAYBOOK_DIR.exists():
+        pytest.skip("no playbooks/ directory — private playbook repo not mounted")
+    md_files = list(Path(PLAYBOOK_DIR).glob("*.md"))
+    if not md_files:
+        pytest.skip("no playbook .md files mounted")
+    # Every mounted playbook should expose a meta_audit brief.
+    for md in md_files:
+        brand = md.stem
         brief = node_brief("meta_audit", brand)
         assert brief, f"{brand} missing meta_audit brief"
-        assert "SCALE" in brief and "REFRESH" in brief and "PAUSE" in brief and "WATCH" in brief
-        assert "breakeven_roas" in brief
-        assert "target_roas" in brief
+        assert all(v in brief for v in ("SCALE", "REFRESH", "PAUSE", "WATCH"))
+        assert "breakeven_roas" in brief and "target_roas" in brief
 
 
 def test_concentration_carried_by_one():

@@ -13,7 +13,14 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-29
 
-- **22:51 UTC** — chore(redact): rename AYURPET_CHAT_ID symbol + redact remaining comment refs (`acf291a`) — 7 files
+- **23:15 UTC** — auto-sync: 2026-04-29 23:15 UTC (`6be1aa3`) — 28 files
+        M	ops/scripts/migrate_airbyte_amazon_financials_view.sql
+        M	ops/scripts/migrate_airbyte_amazon_sku_view.sql
+        M	ops/scripts/migrate_airbyte_amazon_traffic_view.sql
+        M	ops/scripts/migrate_airbyte_amazon_view.sql
+        M	ops/scripts/migrate_airbyte_amazon_view_v2.sql
+        ... (+23 more)
+- **23:00 UTC** — chore(redact): rename AYURPET_CHAT_ID symbol + redact remaining comment refs (`ed4d561`) — 8 files
     - Rename Python constant: AYURPET_CHAT_ID → LIGHTHOUSE_CHAT_ID
       (used in actions/models.py + 5 importing modules)
     - Redact remaining AYURPET (uppercase) refs in comments

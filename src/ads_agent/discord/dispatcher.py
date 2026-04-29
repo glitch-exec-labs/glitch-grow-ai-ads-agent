@@ -157,7 +157,10 @@ async def parse_and_run(content: str) -> str | None:
 
     if cmd == "enable_tiktok_launch":
         mid = pos[0] if pos else ""
-        slug = mid.split("__")[0] if "__" in mid else "ayurpet-global"
+        # Manifest IDs encode the slug as the prefix before "__".
+        # If the prefix is missing the call is malformed — surface that
+        # rather than silently routing to a hardcoded fallback.
+        slug = mid.split("__")[0] if "__" in mid else ""
         state = {
             "command": "enable_tiktok_launch",
             "manifest_id": mid,

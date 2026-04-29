@@ -56,8 +56,15 @@ _NAME_IN_RE  = re.compile(
 def classify_destination(url: str | None) -> str:
     """Bucket a Meta destination URL into a stable label.
 
-    Returns one of: amazon | shopify-ind | shopify-global | shopify-other |
-    other | unknown
+    Returns one of:
+      amazon
+      shopify-<primary_market>   (per-store registry hit, lowercase market code)
+      shopify-other              (any *.myshopify.com)
+      other | unknown
+
+    Custom Shopify domains are resolved via STORE_BRAND_REGISTRY_JSON's
+    `shop_host` + `primary_market` fields. Add an entry there to surface
+    a new store-specific bucket (e.g. `shopify-ae`, `shopify-in`).
     """
     if not url:
         return "unknown"
@@ -66,10 +73,14 @@ def classify_destination(url: str | None) -> str:
         return "unknown"
     if "amazon." in host or host.endswith("amzn.eu") or host.endswith("amzn.to"):
         return "amazon"
-    if "theayurpet.com" in host:
-        return "shopify-ind"
-    if "theayurpet.store" in host:
-        return "shopify-global"
+    # Custom-domain match against registry
+    from ads_agent.brand_registry import entry_for, host_to_slug
+    for shop_host, slug in host_to_slug().items():
+        if shop_host and shop_host in host:
+            entry = entry_for(slug)
+            mkt = (entry.primary_market.lower() if entry and entry.primary_market
+                   else "custom")
+            return f"shopify-{mkt}"
     if "myshopify.com" in host:
         return "shopify-other"
     return "other"

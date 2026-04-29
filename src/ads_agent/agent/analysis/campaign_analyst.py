@@ -170,7 +170,7 @@ def _parse_markdown_report(text: str) -> dict:
 
 async def analyze_campaign(hierarchy: CampaignHierarchy,
                            *,
-                           brand: str = "ayurpet",
+                           brand: str = "default",
                            model_tier: str = "smart") -> dict:
     """Run the methodology prompt against the decomposed campaign data.
 

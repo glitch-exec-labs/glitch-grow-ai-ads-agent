@@ -368,7 +368,7 @@ async def cmd_enable_tiktok_launch(update: Update, ctx: ContextTypes.DEFAULT_TYP
         {
             "command": "enable_tiktok_launch",
             "manifest_id": manifest_id,
-            "store_slug": manifest_id.split("__")[0] if "__" in manifest_id else "ayurpet-global",
+            "store_slug": manifest_id.split("__")[0] if "__" in manifest_id else "",
         },
         working_text=(
             f"Enabling TikTok launch `{manifest_id}`…"
@@ -400,7 +400,7 @@ async def cmd_scan_amazon(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
     args = ctx.args or []
     if not args:
         await update.message.reply_text(
-            "usage: /scan_amazon <store_slug>  (e.g. /scan_amazon ayurpet-ind)"
+            "usage: /scan_amazon <store_slug>  (e.g. /scan_amazon store-a)"
         )
         return
     slug = args[0]

@@ -85,16 +85,27 @@ def proposal_target(slug: str) -> ProposalTarget | None:
     if cfg and cfg.has_any:
         return cfg
 
-    # Legacy fallback — keep <client> on Telegram if env not configured
-    if slug.startswith("ayurpet"):
+    # Legacy fallback — if no per-slug target is configured but the lighthouse
+    # client supergroup chat id is set, route there. Set LIGHTHOUSE_FALLBACK_SLUGS
+    # to an env-driven JSON list to opt slugs into this fallback, e.g.
+    #   LIGHTHOUSE_FALLBACK_SLUGS=["store-a","store-b"]
+    import json as _json
+    import os as _os
+    fb = _os.environ.get("LIGHTHOUSE_FALLBACK_SLUGS", "").strip()
+    if fb:
         try:
-            from ads_agent.actions.models import LIGHTHOUSE_CHAT_ID
-            return ProposalTarget(
-                telegram_chat_id=LIGHTHOUSE_CHAT_ID,
-                discord_channel_id=None,
-            )
-        except Exception:  # noqa: BLE001
-            pass
+            slugs = set(_json.loads(fb)) if fb else set()
+        except _json.JSONDecodeError:
+            slugs = set()
+        if slug in slugs:
+            try:
+                from ads_agent.actions.models import LIGHTHOUSE_CHAT_ID
+                return ProposalTarget(
+                    telegram_chat_id=LIGHTHOUSE_CHAT_ID,
+                    discord_channel_id=None,
+                )
+            except Exception:  # noqa: BLE001
+                pass
     return None
 
 
@@ -110,8 +121,16 @@ def configured_slugs() -> list[str]:
     if _TARGETS is None:
         _TARGETS = _load_from_env()
     out = list(_TARGETS.keys())
-    # Always include <client>-* if LIGHTHOUSE_CHAT_ID is reachable (back-compat)
-    for slug in ("ayurpet-ind", "ayurpet-global"):
-        if slug not in out and proposal_target(slug):
-            out.append(slug)
+    # Include legacy-fallback slugs (LIGHTHOUSE_FALLBACK_SLUGS env) if their
+    # proposal_target() resolves via the back-compat path.
+    import json as _json
+    import os as _os
+    fb = _os.environ.get("LIGHTHOUSE_FALLBACK_SLUGS", "").strip()
+    if fb:
+        try:
+            for slug in _json.loads(fb) or []:
+                if slug not in out and proposal_target(slug):
+                    out.append(slug)
+        except _json.JSONDecodeError:
+            pass
     return out

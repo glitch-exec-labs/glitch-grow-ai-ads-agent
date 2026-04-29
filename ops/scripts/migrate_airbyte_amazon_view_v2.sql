@@ -25,15 +25,15 @@ CREATE VIEW ads_agent.amazon_daily_v AS
 SELECT
     ("PurchaseDate" AT TIME ZONE 'UTC')::date                            AS date,
     CASE "MarketplaceId"
-        WHEN 'A21TJRUUN4KGV' THEN 'ayurpet-ind'     -- Amazon.in
-        WHEN 'A2VIGQ35RCS4UG' THEN 'ayurpet-global' -- Amazon.ae (UAE)
-        WHEN 'ATVPDKIKX0DER'  THEN 'ayurpet-global' -- Amazon.com (US)
-        WHEN 'A2EUQ1WTGCTBG2' THEN 'ayurpet-global' -- Amazon.ca
-        WHEN 'A1AM78C64UM0Y8' THEN 'ayurpet-global' -- Amazon.com.mx
-        WHEN 'A1F83G8C2ARO7P' THEN 'ayurpet-global' -- Amazon.co.uk
-        WHEN 'A28R8C7NBKEWEA' THEN 'ayurpet-global' -- Amazon.ie
-        WHEN 'A1RKKUPIHCS9HS' THEN 'ayurpet-global' -- Amazon.es
-        WHEN 'A1C3SOZRARQ6R3' THEN 'ayurpet-global' -- Amazon.pl
+        WHEN 'A21TJRUUN4KGV' THEN 'store-a'     -- Amazon.in
+        WHEN 'A2VIGQ35RCS4UG' THEN 'store-b' -- Amazon.ae (UAE)
+        WHEN 'ATVPDKIKX0DER'  THEN 'store-b' -- Amazon.com (US)
+        WHEN 'A2EUQ1WTGCTBG2' THEN 'store-b' -- Amazon.ca
+        WHEN 'A1AM78C64UM0Y8' THEN 'store-b' -- Amazon.com.mx
+        WHEN 'A1F83G8C2ARO7P' THEN 'store-b' -- Amazon.co.uk
+        WHEN 'A28R8C7NBKEWEA' THEN 'store-b' -- Amazon.ie
+        WHEN 'A1RKKUPIHCS9HS' THEN 'store-b' -- Amazon.es
+        WHEN 'A1C3SOZRARQ6R3' THEN 'store-b' -- Amazon.pl
         ELSE 'unknown'
     END                                                                  AS store_slug,
     "MarketplaceId"                                                      AS account_id,

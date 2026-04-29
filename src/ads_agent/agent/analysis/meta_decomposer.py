@@ -195,7 +195,7 @@ class MetaAccountHierarchy:
     destination_mix: dict = field(default_factory=dict)
     # URL-vs-name cross-evidence summary. Surfaces operational drift like
     # "campaign named final_retargeting|_amazon_uae but its ads point at
-    # theayurpet.store/products/..." — which a URL-only or name-only view
+    # the brand's Shopify storefront" — which a URL-only or name-only view
     # both miss.
     destination_mismatches: dict = field(default_factory=dict)
     # Amazon halo at account + per-ASIN level. Populated only when the

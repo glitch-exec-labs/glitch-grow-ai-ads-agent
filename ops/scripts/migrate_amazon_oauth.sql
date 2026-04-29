@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS ads_agent.amazon_oauth_state (
     created_at    timestamptz NOT NULL DEFAULT NOW(),
     expires_at    timestamptz NOT NULL DEFAULT NOW() + INTERVAL '10 minutes',
     used_at       timestamptz,                      -- NULL until consumed
-    account_ref   text,                             -- optional hint: who this authorization is for (e.g. "ayurpet")
+    account_ref   text,                             -- optional hint: who this authorization is for (e.g. "<client>")
     scope         text,                             -- e.g. "advertising::campaign_management advertising::account_management"
     notes         text
 );

@@ -126,16 +126,29 @@ _RECIPES_SHOPIFY_NATIVE: dict[str, str] = {
 }
 
 
-# Map store slugs to topology. Defaults to 3rd-party (safe default for most
-# Urban-family stores); brands using Shopify native checkout are listed here.
-_NATIVE_CHECKOUT_SLUGS = {
-    "ayurpet-ind", "ayurpet-global", "mokshya",
-}
+# Map store slugs to checkout topology. Defaults to 3rd-party (the safer
+# fallback for stores using Razorpay/Cashfree-style hosted checkout).
+# Brands on Shopify native checkout (clean URL = `/checkouts/<token>/thank_you`)
+# are read from STORE_NATIVE_CHECKOUT_SLUGS_JSON, e.g.
+#   STORE_NATIVE_CHECKOUT_SLUGS_JSON=["store-a","store-b"]
+
+
+def _native_checkout_slugs() -> set[str]:
+    import json
+    import os
+    raw = os.environ.get("STORE_NATIVE_CHECKOUT_SLUGS_JSON", "").strip()
+    if not raw:
+        return set()
+    try:
+        v = json.loads(raw)
+        return set(v) if isinstance(v, list) else set()
+    except json.JSONDecodeError:
+        return set()
 
 
 def recipe_for(store_slug: str, key: str) -> str:
     """Return the recipe body for `key`, selected for this store's checkout topology."""
-    if store_slug in _NATIVE_CHECKOUT_SLUGS:
+    if store_slug in _native_checkout_slugs():
         return _RECIPES_SHOPIFY_NATIVE.get(key, "")
     return _RECIPES_3PARTY_CHECKOUT.get(key, "")
 

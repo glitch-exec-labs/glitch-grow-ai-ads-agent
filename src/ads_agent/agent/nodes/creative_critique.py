@@ -15,36 +15,21 @@ dropship standards, etc.
 from __future__ import annotations
 
 from ads_agent.agent.llm import complete_vision
+from ads_agent.brand_registry import brand_for
 from ads_agent.config import get_store
 from ads_agent.meta.graph_client import MetaGraphError, creative_details
 
 
-FAMILY_CONTEXT = {
-    "urban": (
-        "URBAN FAMILY context: dropshipping store selling high-quality clone replicas "
-        "(Prada/Cartier/etc. style) to the Indian market. Legal. COD-heavy; trust signals "
-        "(Cash on Delivery, All India Delivery, authentic-looking product) matter more than brand story. "
-        "Content is vendor-provided UGC. Average CPC benchmark: $3.50 CAD. Creative churn cadence is fast. "
-        "Judge: does the hook grab in <1.5s, is the offer clear, does it trigger impulse buy with trust cues."
-    ),
-    "storico": "URBAN FAMILY (see urban).",
-    "classicoo": "URBAN FAMILY (see urban).",
-    "trendsetters": "URBAN FAMILY (see urban).",
-    "ayurpet-ind": (
-        "<client> context: legitimate pet-health/supplement brand. India market. Longer consideration "
-        "cycle than dropship; trust + authenticity + product ingredient clarity matter. "
-        "Judge: does it build brand equity, is the health claim credible, would a pet owner trust this."
-    ),
-    "ayurpet-global": (
-        "<client> (Global storefront): same brand, international pet owners. English copy. "
-        "Same criteria but test for clarity across non-Indian audiences."
-    ),
-    "mokshya": (
-        "MOKSHYA context: authentic rudraksha bead mala brand targeting WESTERN SEEKERS "
-        "(non-Indian audiences into Hinduism/yoga/meditation/spiritual practice, NOT Indian diaspora). "
-        "Copy + visuals should feel authentic, consecrated, sourced-from-Himalaya — never tacky, "
-        "never generic spiritual. Judge: is it premium, does it speak to a Western seeker (not Indian-cultural "
-        "in-group), does it show proof of authenticity."
+# Brand-family context — keyed by `brand_key` from STORE_BRAND_REGISTRY_JSON,
+# not by slug, so multiple slugs that share a brand inherit the same context.
+# Brand-specific narrative belongs in the private playbook repo
+# (loaded via `playbook.node_brief("creative_critique", brand_key)`); the
+# minimal copy here is a fallback for brand_keys without a private playbook.
+BRAND_CONTEXT: dict[str, str] = {
+    "default": (
+        "Generic e-commerce context. Judge by D2C standards: does the hook "
+        "stop the scroll in <1.5s, is the offer/CTA clear, does the creative "
+        "match the persona implied by the product."
     ),
 }
 
@@ -108,7 +93,7 @@ async def creative_critique_node(state: dict) -> dict:
         f"ROAS {d['reported_roas']:.2f}x\n"
     )
 
-    family_ctx = FAMILY_CONTEXT.get(slug, "No specific brand family context available — judge by general e-commerce standards.")
+    family_ctx = BRAND_CONTEXT.get(brand_for(slug), BRAND_CONTEXT["default"])
 
     prior = state.get("prior_context", "") or ""
     prompt = (
@@ -124,7 +109,7 @@ async def creative_critique_node(state: dict) -> dict:
     # expertise. slug may be empty if caller didn't pass store_slug through
     # state — in that case node_brief() returns "" and we use vanilla prompt.
     from ads_agent.playbook import node_brief
-    brand_key = slug.split("-")[0] if slug else ""
+    brand_key = brand_for(slug) if slug else ""
     brand_brief = node_brief("creative_critique", brand_key) if brand_key else ""
     system_prompt = CRITIQUE_SYSTEM + (
         f"\n\n---\nBRAND PLAYBOOK CONTEXT (authoritative, overrides generic advice):\n{brand_brief}\n"

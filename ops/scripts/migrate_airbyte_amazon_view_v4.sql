@@ -6,8 +6,8 @@
 --
 -- Ad-account → marketplace mapping is resolved through c0rakm_profiles.
 -- We filter to the two profiles Ayurpet actively manages:
---   2849798098183833 → marketplace A21TJRUUN4KGV → store_slug ayurpet-ind (INR)
---   75561079299164   → marketplace A2VIGQ35RCS4UG → store_slug ayurpet-global (AED)
+--   2849798098183833 → marketplace A21TJRUUN4KGV → store_slug store-a (INR)
+--   75561079299164   → marketplace A2VIGQ35RCS4UG → store_slug store-b (AED)
 -- Other Indofolk Wellness profiles (IE/PL/UK/ES) also exist in c0rakm_profiles
 -- but carry ~zero managed spend; excluded to keep view's currency mix honest.
 --
@@ -26,15 +26,15 @@ CREATE VIEW ads_agent.amazon_daily_v AS
 SELECT
     ("PurchaseDate" AT TIME ZONE 'UTC')::date                            AS date,
     CASE "MarketplaceId"
-        WHEN 'A21TJRUUN4KGV' THEN 'ayurpet-ind'
-        WHEN 'A2VIGQ35RCS4UG' THEN 'ayurpet-global'
-        WHEN 'ATVPDKIKX0DER'  THEN 'ayurpet-global'
-        WHEN 'A2EUQ1WTGCTBG2' THEN 'ayurpet-global'
-        WHEN 'A1AM78C64UM0Y8' THEN 'ayurpet-global'
-        WHEN 'A1F83G8C2ARO7P' THEN 'ayurpet-global'
-        WHEN 'A28R8C7NBKEWEA' THEN 'ayurpet-global'
-        WHEN 'A1RKKUPIHCS9HS' THEN 'ayurpet-global'
-        WHEN 'A1C3SOZRARQ6R3' THEN 'ayurpet-global'
+        WHEN 'A21TJRUUN4KGV' THEN 'store-a'
+        WHEN 'A2VIGQ35RCS4UG' THEN 'store-b'
+        WHEN 'ATVPDKIKX0DER'  THEN 'store-b'
+        WHEN 'A2EUQ1WTGCTBG2' THEN 'store-b'
+        WHEN 'A1AM78C64UM0Y8' THEN 'store-b'
+        WHEN 'A1F83G8C2ARO7P' THEN 'store-b'
+        WHEN 'A28R8C7NBKEWEA' THEN 'store-b'
+        WHEN 'A1RKKUPIHCS9HS' THEN 'store-b'
+        WHEN 'A1C3SOZRARQ6R3' THEN 'store-b'
         ELSE 'unknown'
     END                                                                  AS store_slug,
     "MarketplaceId"                                                      AS account_id,
@@ -61,15 +61,15 @@ UNION ALL
 SELECT
     ("PurchaseDate" AT TIME ZONE 'UTC')::date                            AS date,
     CASE "MarketplaceId"
-        WHEN 'A21TJRUUN4KGV' THEN 'ayurpet-ind'
-        WHEN 'A2VIGQ35RCS4UG' THEN 'ayurpet-global'
-        WHEN 'ATVPDKIKX0DER'  THEN 'ayurpet-global'
-        WHEN 'A2EUQ1WTGCTBG2' THEN 'ayurpet-global'
-        WHEN 'A1AM78C64UM0Y8' THEN 'ayurpet-global'
-        WHEN 'A1F83G8C2ARO7P' THEN 'ayurpet-global'
-        WHEN 'A28R8C7NBKEWEA' THEN 'ayurpet-global'
-        WHEN 'A1RKKUPIHCS9HS' THEN 'ayurpet-global'
-        WHEN 'A1C3SOZRARQ6R3' THEN 'ayurpet-global'
+        WHEN 'A21TJRUUN4KGV' THEN 'store-a'
+        WHEN 'A2VIGQ35RCS4UG' THEN 'store-b'
+        WHEN 'ATVPDKIKX0DER'  THEN 'store-b'
+        WHEN 'A2EUQ1WTGCTBG2' THEN 'store-b'
+        WHEN 'A1AM78C64UM0Y8' THEN 'store-b'
+        WHEN 'A1F83G8C2ARO7P' THEN 'store-b'
+        WHEN 'A28R8C7NBKEWEA' THEN 'store-b'
+        WHEN 'A1RKKUPIHCS9HS' THEN 'store-b'
+        WHEN 'A1C3SOZRARQ6R3' THEN 'store-b'
         ELSE 'unknown'
     END                                                                  AS store_slug,
     "MarketplaceId"                                                      AS account_id,
@@ -96,15 +96,15 @@ UNION ALL
 SELECT
     cd."date"::date                                                      AS date,
     CASE (p."accountInfo"->>'marketplaceStringId')
-        WHEN 'A21TJRUUN4KGV' THEN 'ayurpet-ind'
-        WHEN 'A2VIGQ35RCS4UG' THEN 'ayurpet-global'
-        WHEN 'ATVPDKIKX0DER'  THEN 'ayurpet-global'
-        WHEN 'A2EUQ1WTGCTBG2' THEN 'ayurpet-global'
-        WHEN 'A1AM78C64UM0Y8' THEN 'ayurpet-global'
-        WHEN 'A1F83G8C2ARO7P' THEN 'ayurpet-global'
-        WHEN 'A28R8C7NBKEWEA' THEN 'ayurpet-global'
-        WHEN 'A1RKKUPIHCS9HS' THEN 'ayurpet-global'
-        WHEN 'A1C3SOZRARQ6R3' THEN 'ayurpet-global'
+        WHEN 'A21TJRUUN4KGV' THEN 'store-a'
+        WHEN 'A2VIGQ35RCS4UG' THEN 'store-b'
+        WHEN 'ATVPDKIKX0DER'  THEN 'store-b'
+        WHEN 'A2EUQ1WTGCTBG2' THEN 'store-b'
+        WHEN 'A1AM78C64UM0Y8' THEN 'store-b'
+        WHEN 'A1F83G8C2ARO7P' THEN 'store-b'
+        WHEN 'A28R8C7NBKEWEA' THEN 'store-b'
+        WHEN 'A1RKKUPIHCS9HS' THEN 'store-b'
+        WHEN 'A1C3SOZRARQ6R3' THEN 'store-b'
         ELSE 'unknown'
     END                                                                  AS store_slug,
     (p."accountInfo"->>'marketplaceStringId')                            AS account_id,

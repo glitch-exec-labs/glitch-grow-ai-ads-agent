@@ -72,7 +72,7 @@ def load_ref(name: str) -> str:
 
 
 @lru_cache(maxsize=8)
-def load_raw(brand: str = "ayurpet") -> str:
+def load_raw(brand: str = "default") -> str:
     """Return the raw markdown of a brand's playbook."""
     path = _resolve(brand)
     if not path.exists():
@@ -81,7 +81,7 @@ def load_raw(brand: str = "ayurpet") -> str:
     return path.read_text()
 
 
-def list_sections(brand: str = "ayurpet") -> list[tuple[str, str]]:
+def list_sections(brand: str = "default") -> list[tuple[str, str]]:
     """Return [(roman_numeral, section_title), ...]."""
     text = load_raw(brand)
     out = []
@@ -118,7 +118,7 @@ def _looks_like_roman(s: str) -> bool:
     return bool(re.fullmatch(r"[IVX]+", s.upper()))
 
 
-def node_brief(node_name: str, brand: str = "ayurpet") -> str:
+def node_brief(node_name: str, brand: str = "default") -> str:
     """Return the LLM-node brief from Section X for the given node.
 
     node_name ∈ {"ideas", "tracking_audit", "creative_critique"}.
@@ -135,7 +135,7 @@ def node_brief(node_name: str, brand: str = "ayurpet") -> str:
     return m.group(1).strip() if m else ""
 
 
-def rules(brand: str = "ayurpet") -> dict[str, Any]:
+def rules(brand: str = "default") -> dict[str, Any]:
     """Parse Section IX's YAML block into a dict.
 
     Planner / executor read this to drive numeric thresholds. Returns
@@ -161,7 +161,7 @@ def rules(brand: str = "ayurpet") -> dict[str, Any]:
         return {}
 
 
-def version(brand: str = "ayurpet") -> str:
+def version(brand: str = "default") -> str:
     """Return the version stamp from the playbook's H1."""
     text = load_raw(brand)
     m = re.search(r"^# .+ · (v\d+) \((\d{4}-\d{2}-\d{2})\)", text, re.MULTILINE)
@@ -170,7 +170,7 @@ def version(brand: str = "ayurpet") -> str:
 
 if __name__ == "__main__":
     # Quick diagnostic — run `python -m ads_agent.playbook` to verify wiring.
-    brand = "ayurpet"
+    brand = "default"
     print(f"Playbook: {brand} · {version(brand)}")
     print(f"Sections ({len(list_sections(brand))}):")
     for r, t in list_sections(brand):
