@@ -13,7 +13,8 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-29
 
-- **23:19 UTC** — feat(brand-registry): Phase 2 — env-driven brand registry, engine fully neutral (`13e9b21`) — 3 files
+- **23:19 UTC** — chore(redact): regen CHANGELOG after final commit-message scrub (`a950d45`) — 1 file
+- **23:19 UTC** — feat(brand-registry): Phase 2 — env-driven brand registry, engine fully neutral (`011aed3`) — 3 files
     Add ads_agent/brand_registry.py as the single source of truth for slug →
     {brand_key, primary_market, shop_host, amazon_marketplace, currency}.
     Driven by STORE_BRAND_REGISTRY_JSON env var. The engine now has zero
@@ -24,22 +25,22 @@ Body text (if present) shown as indented sub-bullets.
       - amazon_recs.py — same
       - attribution.py — slug→host, slug→amazon-marketplace, slug→currency all
         flow through the registry; FX_TO_INR table replaces hardcoded ternaries
-- **23:15 UTC** — auto-sync: 2026-04-29 23:15 UTC (`a774dc7`) — 29 files
+- **23:15 UTC** — auto-sync: 2026-04-29 23:15 UTC (`261d355`) — 29 files
         M	ops/scripts/migrate_airbyte_amazon_financials_view.sql
         M	ops/scripts/migrate_airbyte_amazon_sku_view.sql
         M	ops/scripts/migrate_airbyte_amazon_traffic_view.sql
         M	ops/scripts/migrate_airbyte_amazon_view.sql
         M	ops/scripts/migrate_airbyte_amazon_view_v2.sql
         ... (+23 more)
-- **23:00 UTC** — chore(redact): rename AYURPET_CHAT_ID symbol + redact remaining comment refs (`ed4d561`) — 8 files
-    - Rename Python constant: AYURPET_CHAT_ID → LIGHTHOUSE_CHAT_ID
+- **23:00 UTC** — chore(redact): rename LIGHTHOUSE_CHAT_ID symbol + redact remaining comment refs (`14c324d`) — 8 files
+    - Rename Python constant: LIGHTHOUSE_CHAT_ID → LIGHTHOUSE_CHAT_ID
       (used in actions/models.py + 5 importing modules)
-    - Redact remaining AYURPET (uppercase) refs in comments
+    - Redact remaining <client> (uppercase) refs in comments
     - Smoke-tested: imports + graph compile clean
     Phase 2 still pending — 152 refs remain in source code:
-      - playbook.py: default brand kwarg = 'ayurpet'
-      - meta_audit.py / amazon_recs.py: slug.startswith('ayurpet') router
-      - attribution.py: hardcoded slug → host map (theayurpet.com/.store)
+      - playbook.py: default brand kwarg = '<client>'
+      - meta_audit.py / amazon_recs.py: slug.startswith('<client>') router
+      - attribution.py: hardcoded slug → host map (the<client>.com/.store)
                         + slug → currency (INR/AED) + slug → amazon.in/.ae
       - creative_critique.py: brand-specific prompt blocks
 - **22:50 UTC** — chore(redact): regenerate CHANGELOG from rewritten commit history (`743c1bc`) — 1 file
