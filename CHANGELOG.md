@@ -13,10 +13,21 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-29
 
-- **21:00 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`7bad4ec`)
-- **21:00 UTC** — docs(readme): reflect new platform surface — Google Ads, LinkedIn Ads, native TikTok/Meta apps (`443bfec`) — 1 file
+- **22:30 UTC** — chore(docs): redact client account ids + MCC number from public surface (`1b4778d`) — 2 files
+    The README and changelog had leaked our Google Ads MCC number and a
+    client's LinkedIn/Google ad account ids. This repo is public — those
+    identifiers should never have been in commit messages or rendered docs.
+    - README: replaced numeric MCC + account ids with descriptive text
+    - CHANGELOG: regenerated from the rewritten commit history
+    - Commit history rewritten via git filter-branch to redact the same
+      patterns from older commit message bodies; force-pushed to origin
+    If you have a local clone, fetch + reset:
+      git fetch --tags --force
+      git reset --hard origin/main
+- **21:00 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`07a527a`) — 1 file
+- **21:00 UTC** — docs(readme): reflect new platform surface — Google Ads, LinkedIn Ads, native TikTok/Meta apps (`6f10c3a`) — 1 file
     What changed since the last README pass:
-    - Native Google Ads (own MCC 8008852484) — read + write, multi-tenant
+    - Native Google Ads (own MCC <redacted-mcc-id>) — read + write, multi-tenant
       by client linking under our manager account
     - Native LinkedIn Ads (Marketing API app with elevated access already
       approved) — read + write, multi-tenant via Manage Access
@@ -25,9 +36,9 @@ Body text (if present) shown as indented sub-bullets.
       partner-tier app application is pending. Removed "Supermetrics
       fallback" wording — Supermetrics path is fully torn out
     - New public sibling: glitch-grow-linkedin-ad-mcp (MIT) — anyone can
-- **20:45 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`956361a`) — 1 file
-- **20:42 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`b2a6511`)
-- **20:42 UTC** — feat(linkedin): write API helpers — campaign group + campaign creation, status updates (`c4692db`) — 2 files
+- **20:45 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`67fc790`) — 1 file
+- **20:42 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`a99d6ab`)
+- **20:42 UTC** — feat(linkedin): write API helpers — campaign group + campaign creation, status updates (`8cfd7d3`) — 2 files
     - mutations.py: create_campaign_group, create_campaign, update_*_status
       with all the LinkedIn-specific gotchas baked in (politicalIntent
       required as 202404, totalBudget min $100, runSchedule.start ≥ now,
@@ -35,14 +46,14 @@ Body text (if present) shown as indented sub-bullets.
     - client.py: handle restli partial-update protocol (X-RestLi-Method
       PARTIAL_UPDATE header), surface created-entity ids from x-restli-id
       response header
-    Live verified on Nuraveda demo account 504466548:
-      group  938600016 (DRAFT, $100)
-      camp   647415626 (DRAFT, TEXT_AD, $10/day)
-- **20:30 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`f43b850`) — 1 file
-- **20:25 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`8b3a3ec`)
-- **20:25 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`02b9048`) — 9 files
-- **19:29 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`fe26957`)
-- **19:28 UTC** — feat(google_ads): native API client + agent node — multi-tenant via MCC (`d3fba05`) — 8 files
+    Live verified on <client> demo account <redacted-account-id>:
+      group  <redacted-group-id> (DRAFT, $100)
+      camp   <redacted-campaign-id> (DRAFT, TEXT_AD, $10/day)
+- **20:30 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`7f12a7a`) — 1 file
+- **20:25 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`564dc20`)
+- **20:25 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`3eacee4`) — 9 files
+- **19:29 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`54311bf`)
+- **19:28 UTC** — feat(google_ads): native API client + agent node — multi-tenant via MCC (`4ca6152`) — 8 files
     - google_ads/client.py: SA + quota_project override, MCC-aware client cache,
       customer_id resolver from STORE_GOOGLE_ADS_ACCOUNTS_JSON, list_mcc_clients
     - google_ads/queries.py: GAQL helpers — campaigns, keywords, search_terms,
@@ -52,7 +63,7 @@ Body text (if present) shown as indented sub-bullets.
     - Wired into graph router + Telegram /google_ads + Discord SIMPLE_STORE_N
     Auth verified live: SA glitch-vertex-ai@capable-boulder-487806-j0 +
     quota project gen-lang-client-0187466920 (Default Gemini Project where
-    dev token was approved) + Service Usage Consumer IAM grant. MCC 8008852484
+    dev token was approved) + Service Usage Consumer IAM grant. MCC <redacted-mcc-id>
 - **19:15 UTC** — auto-sync: 2026-04-29 06:00 UTC (`f92c53e`) — 2 files
         M	src/ads_agent/amazon/ads_api.py
 - **05:45 UTC** — auto-sync: 2026-04-29 05:45 UTC (`53658c0`) — 2 files

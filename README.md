@@ -38,7 +38,7 @@ Every decision the agent makes is grounded in real revenue math across the surfa
 - **Meta Ads** — campaign/ad-set/ad-level spend + creative + destination URLs (native Marketing API app)
 - **Amazon** — Seller Central orders, SP Ads performance, per-ASIN P&L, and Meta → Amazon cross-channel attribution (native Ads API on the brand's own LWA approval; our Glitch Grow partner-tier app is pending)
 - **TikTok Ads** — native Business API app: campaigns, ad-sets, ads, pixels, creative upload, Meta→TikTok port flow
-- **Google Ads** — native Google Ads API on our own MCC (`8008852484`). Clients link their account once; we read + write across the whole portfolio without per-tenant OAuth
+- **Google Ads** — native Google Ads API on our own Manager (MCC) account. Clients link their account once; we read + write across the whole portfolio without per-tenant OAuth
 - **LinkedIn Ads** — native Marketing API app with elevated access already approved. Read + write campaigns, groups, analytics. Same pattern as Google: client adds our user via Manage Access, no fresh app approval needed on their end
 
 ### Use it for your brand (managed-service offer)
@@ -111,7 +111,7 @@ It answers the questions an ad ops manager would otherwise pay ₹50K-2L/month t
 ### Google Ads integration (native API on our MCC)
 - Read: `/google_ads <store> [days]` — account totals, top campaigns by spend, zero-conversion search terms (negative-keyword candidates), per-keyword performance.
 - Write helpers: campaign budget + Search/Performance Max campaign creation, ad-group + keyword mutations (BROAD/PHRASE/EXACT). All EU-political-ad declaration handled.
-- Multi-tenant via MCC `8008852484` ("Glitch Grow"): client requests link from their Google Ads account → we approve → their `customer_id` goes into `STORE_GOOGLE_ADS_ACCOUNTS_JSON` → `/google_ads <slug>` works the next second.
+- Multi-tenant via our Glitch Grow MCC: client requests link from their Google Ads account → we approve → their `customer_id` goes into `STORE_GOOGLE_ADS_ACCOUNTS_JSON` → `/google_ads <slug>` works the next second.
 
 ### LinkedIn Ads integration (native Marketing API app)
 - Read: `/linkedin_ads <store> [days]` — account totals, campaign roster, per-creative metrics via `/rest/adAnalytics`.
