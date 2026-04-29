@@ -15,7 +15,8 @@ Each brief has:
 from __future__ import annotations
 
 from ads_agent.agent.llm import complete_vision
-from ads_agent.agent.nodes.creative_critique import FAMILY_CONTEXT
+from ads_agent.agent.nodes.creative_critique import BRAND_CONTEXT
+from ads_agent.brand_registry import brand_for
 from ads_agent.config import STORE_AD_ACCOUNTS, get_store
 from ads_agent.meta.graph_client import MetaGraphError, ads_for_account
 
@@ -77,7 +78,7 @@ async def ideas_node(state: dict) -> dict:
     top = with_purchases[:3]
 
     # Build the context block the LLM sees
-    family_ctx = FAMILY_CONTEXT.get(slug, "General e-commerce context.")
+    family_ctx = BRAND_CONTEXT.get(brand_for(slug), BRAND_CONTEXT["default"])
     winners_block_lines = []
     thumbnails: list[str] = []
     for i, a in enumerate(top, 1):

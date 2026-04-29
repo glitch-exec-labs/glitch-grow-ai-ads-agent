@@ -4,6 +4,8 @@ The engine-level helpers are brand-neutral; brand-specific methodology
 (M40/RECLAIM, halo audits) lives only in private playbook briefs —
 verify the engine doesn't leak it into other brand briefs.
 """
+from __future__ import annotations
+
 import json
 
 import pytest
@@ -25,9 +27,6 @@ def _seed_registry(monkeypatch):
     )
     from ads_agent.brand_registry import reset_registry
     reset_registry()
-from __future__ import annotations
-
-
 # ----- destinations module --------------------------------------------------
 
 def test_classify_amazon_canonical():

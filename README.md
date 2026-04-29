@@ -78,15 +78,15 @@ It answers the questions an ad ops manager would otherwise pay ₹50K-2L/month t
 
 ### Measurement substrate (v1, shipped)
 - **True ROAS** per channel: Shopify revenue ÷ Meta spend via PostHog ground truth (not Meta's own over-reported number)
-- **Meta → Amazon attribution** via subtraction model (`total_amazon_orders − amazon_sp_ads_orders`) for brands without Amazon Attribution API access
+- **Meta → Amazon attribution** via a sessions-delta model where Amazon Attribution API isn't available, falling back to a clean subtraction model (`total_amazon_orders − amazon_sp_ads_orders`) when traffic data is thin
 - **Per-SKU P&L** joining Amazon OrderItems × Listings × productads with currency-normalized ROAS across IN/AE/UK/EU marketplaces
 - **Tracking reconciliation**: Shopify orders joined to Meta conversion events by `order_id`; surfaces pixel-only vs CAPI-only events and generates specific remediation recipes
 
 ### Pluggable data-source architecture
-- Meta Ads via [glitch-ads-mcp](https://github.com/glitch-exec-labs/glitch-ads-mcp) (fork of pipeboard/meta-ads-mcp, port 3103)
-- Amazon Seller + Ads via Airbyte Cloud → Postgres (24 streams, dedup'd + typed views in `ads_agent.*`); sibling [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) kept for ad-hoc Claude Code exploration and for eventual Amazon Attribution API activation
-- Shopify via owned asyncpg reader against the auth-hub `Session` table + typed GraphQL client
-- Swapping a data source (e.g. Amazon Airbyte → native LWA once approved) is a server-side change with zero agent redeploy
+- **Meta Ads** via our own native Marketing API app + [glitch-ads-mcp](https://github.com/glitch-exec-labs/glitch-ads-mcp) (fork of pipeboard/meta-ads-mcp, port 3103) for read/write tools
+- **Amazon Seller + Ads** via the **native Amazon Ads API** (LWA OAuth) using each brand's own Selling-Partner approval. Our Glitch Grow partner-tier app application is pending — once approved, partner-tier replaces per-brand LWA without an agent redeploy. Seller Central order data flows in parallel via Airbyte Cloud → Postgres (24 streams, deduped + typed views in `ads_agent.*`)
+- **Shopify** via owned asyncpg reader against the auth-hub `Session` table + typed GraphQL client
+- **Engine/playbook split** — `STORE_BRAND_REGISTRY_JSON` maps each store slug to its brand_key, primary market, shop host, Amazon marketplace, and currency. The engine code is fully brand-neutral; per-brand tuning (thresholds, methodology, prompts) lives in a separate private playbook repo loaded at runtime
 
 ### Memory + learning
 - `ads_agent.agent_memory` with pgvector (HNSW cosine) and tsvector FTS — every agent turn indexed for hybrid recall
@@ -119,8 +119,9 @@ It answers the questions an ad ops manager would otherwise pay ₹50K-2L/month t
 - Multi-tenant via Campaign Manager → **Manage Access**: client adds our LinkedIn user as `CAMPAIGN_MANAGER` → their account_id goes into `STORE_LINKEDIN_ADS_ACCOUNTS_JSON` → live.
 - The same surface is published as a public MCP server at [glitch-grow-linkedin-ad-mcp](https://github.com/glitch-exec-labs/glitch-grow-linkedin-ad-mcp) so any MCP client (Claude Desktop, Cursor, your own agent) can use the LinkedIn Marketing API without going through their own approval queue.
 
-### Per-brand playbook system
-- Tuned thresholds (`breakeven_roas`, `target_roas`, `target_cpa`) live in private playbooks per brand, not hardcoded in the engine. Lighthouse client (1.6/2.8 breakeven/target) ≠ Urban apparel (2.2/3.5) ≠ Mokshya (2.0/3.2). Engine is brand-agnostic; calibration ships separately.
+### Per-brand playbook system + brand registry
+- Tuned thresholds (`breakeven_roas`, `target_roas`, `target_cpa`) live in private playbooks per brand, not hardcoded in the engine. Different verticals hit different ratios — pet supplements (1.6/2.8) ≠ apparel (2.2/3.5) ≠ premium-spiritual (2.0/3.2). Engine is brand-agnostic; calibration ships separately.
+- `STORE_BRAND_REGISTRY_JSON` is the single source of truth for slug → (brand_key, primary_market, shop_host, amazon_marketplace, currency). Adding a new tenant is one JSON entry; no source changes, no agent redeploy.
 
 ### Proactive alerts
 - CPC drift, match-rate drop > 20% d/d, ROAS drop > 30% w/w, zero-purchase burners, premature-kill bias warnings, daily 07:00 IST digest per store.
@@ -137,14 +138,17 @@ without redeploying the agent.
 |---|---|---|---|
 | **glitch-grow-ai-ads-agent** (this repo) | LangGraph agent, Telegram + Discord transports, PostHog attribution, memory, native Google Ads + LinkedIn Ads + TikTok clients | `3110` | v2 live |
 | [glitch-ads-mcp](https://github.com/glitch-exec-labs/glitch-ads-mcp) | Meta Ads MCP (fork of pipeboard's meta-ads-mcp) | `3103` | live |
-| [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) | Amazon Seller Central + Amazon Ads + attribution bridge | `3105` | live (native LWA on a brand's personal API access; our Glitch Grow partner-tier application pending) |
+| [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) | Amazon Seller Central + Amazon Ads (native LWA OAuth) + attribution bridge | `3105` | live (native LWA on each brand's own SP API approval; our Glitch Grow partner-tier app application is pending) |
 | [glitch-grow-linkedin-ad-mcp](https://github.com/glitch-exec-labs/glitch-grow-linkedin-ad-mcp) | Public MCP server for LinkedIn Marketing API. Anyone can pip-install it and connect our hosted (already-approved) app to skip LinkedIn's Marketing API approval queue | n/a | public, MIT |
+| [tiktok-business-api-sdk](https://github.com/glitch-exec-labs/tiktok-business-api-sdk) | Fork of TikTok's official Business API SDK — vendored as the in-process client behind our TikTok node. Pinned + patched as TikTok ships breaking changes | n/a | live (fork) |
 | [glitch-discord-bot](https://github.com/glitch-exec-labs/glitch-discord-bot) | Guild slash commands + channel→JSON inbox fanout that the agent's Discord consumer reads | n/a | live |
 
-TikTok and Google Ads + LinkedIn Ads are **in-process native clients** in
+TikTok, Google Ads, and LinkedIn Ads are **in-process native clients** in
 this repo (`ads_agent/tiktok/`, `ads_agent/google_ads/`,
-`ads_agent/linkedin/`) — no separate sibling needed. ClickUp + Metabase
-are post-processing surfaces driven by ad-hoc scripts under `/tmp/`.
+`ads_agent/linkedin/`). The TikTok client wraps our own
+[tiktok-business-api-sdk fork](https://github.com/glitch-exec-labs/tiktok-business-api-sdk)
+of TikTok's official SDK. ClickUp + Metabase are post-processing
+surfaces driven by ad-hoc scripts under `/tmp/`.
 
 ## Architecture
 
@@ -157,28 +161,30 @@ are post-processing surfaces driven by ad-hoc scripts under `/tmp/`.
   (webhook mode + secret)        ↓ writes JSON to inbox/
                                    ads_agent.discord.inbox_consumer
             ▼                                       ▼
-        ┌──────────────────────────────────────────────────┐
-        │           LangGraph Agent Core                   │   recall → route → execute
-        │   ─────────────────────────────────              │   every turn injects <prior_context>
-        │   • planner / router                             │   LiteLLM: Gemini 2.5 Pro / Sonnet / Flash
-        │   • methodology nodes (meta_audit, amazon_recs)  │
-        │   • measurement nodes                            │
-        │   • action nodes + HITL gate                     │
-        │   • cross-platform approval resolver             │
-        │   • memory (pgvector + FTS)                      │
-        └──────┬───────────────────────────────────────────┘
+        ┌────────────────────────────────────────────────────────┐
+        │            LangGraph Agent Core                        │   recall → route → execute
+        │   ──────────────────────────────────────               │   every turn injects <prior_context>
+        │   • planner / router (env-driven brand registry)       │   LiteLLM: Gemini 2.5 Pro / Sonnet / Flash
+        │   • methodology nodes (meta_audit, amazon_recs)        │
+        │   • measurement nodes (insights / roas / attribution)  │
+        │   • action nodes + HITL gate (4 platforms)             │
+        │   • cross-platform approval resolver (TG ⇄ Discord)    │
+        │   • memory (pgvector + FTS)                            │
+        └──────┬─────────────────────────────────────────────────┘
                │
-   ┌───────────┼─────────────┬──────────────┬──────────────┬───────────────┐
-   ▼           ▼             ▼              ▼              ▼               ▼
- PostHog   Meta Graph   Airbyte→Postgres   MAP API     TikTok Business   Shopify Admin
- (events,   (read +     (Amazon Seller     (Amazon     (campaign /        GraphQL
-  CAPI,      CAPI write   + Ads, dedup'd    Ads CRUD,   adset / ad CRUD,  + Session DB
-  identity)  via MCP)     views)            authoritative) creative upload)
-                                  │
-                                  ▼
-                          ads_agent.*_daily_v
-                       (deduped, typed views;
-                        attribution math, SKU P&L)
+   ┌─────────┬─┴───────┬───────────┬──────────────┬──────────────┬──────────────┬───────────────┐
+   ▼         ▼         ▼           ▼              ▼              ▼              ▼               ▼
+PostHog   Meta      Airbyte→PG  Amazon Ads     TikTok        Google Ads     LinkedIn Ads    Shopify
+(events,  Graph     (Seller     native LWA     Business      native MCC     Marketing API   Admin
+ CAPI,    + CAPI    Central     OAuth          API native    (one MCC →     native app +    GraphQL
+ ident)   via MCP)  orders)     (read+write)   app           N tenants)     hosted MCP      + auth hub
+                       │             │             │             │              │
+                       └─────────────┴─────────────┴─────────────┴──────────────┘
+                                                    │
+                                                    ▼
+                                          ads_agent.*_daily_v
+                                       (deduped, typed views;
+                                        attribution math, SKU P&L)
 ```
 
 **Deployment split:**
@@ -251,6 +257,11 @@ Key variables in `.env`:
 | `AGENT_RUN_TOKEN` | Bearer token required to call `POST /agent/run`. If unset the endpoint is disabled. In Cloud Run, also gate with IAM — never deploy `/agent/run` as `--allow-unauthenticated` |
 | `ANTHROPIC_API_KEY` | For Claude Sonnet (reasoning nodes) |
 | `GOOGLE_API_KEY` | For Gemini Flash/Pro (bulk + audit nodes) |
+| `STORE_BRAND_REGISTRY_JSON` | Map slug → `{brand_key, primary_market, shop_host, amazon_marketplace, currency}`. Drives every brand-aware behaviour in the engine without code changes |
+| `STORE_GOOGLE_ADS_ACCOUNTS_JSON` | Map slug → Google Ads `customer_id` (under our MCC) |
+| `STORE_LINKEDIN_ADS_ACCOUNTS_JSON` | Map slug → LinkedIn `account_id` (via Manage Access) |
+| `STORE_TIKTOK_ACCOUNTS_JSON` | Map slug → TikTok `advertiser_id`, `pixel_id`, `identity_id`, default geo |
+| `STORE_GA4_STREAMS_JSON` | Map slug → GA4 `property_id` + `stream_id` |
 
 ### Configure your stores
 
@@ -437,8 +448,10 @@ PostHog handles pixel-vs-CAPI event deduplication and person-level identity stit
 
 ```
 src/ads_agent/
+  brand_registry.py      # Single source of truth for slug → brand metadata (env-driven)
   config.py              # Store registry + scope matrix + Settings
   server.py              # FastAPI: /healthz, /shopify/webhook/{shop}, /telegram/webhook, /agent/run
+  playbook.py            # Loader for per-brand playbooks (private repo or local fallback)
   shopify/
     sessions.py          # asyncpg read-only access to Shopify auth-hub Session table
     admin_gql.py         # Typed Shopify Admin GraphQL client
@@ -446,37 +459,68 @@ src/ads_agent/
   meta/
     mcp_client.py        # HTTP client for meta-ads-mcp (streamable-http transport)
     capi_sender.py       # facebook-business-sdk CAPI sends with order_id + event_id
+    destinations.py      # URL/name classifier (registry-driven) + cross-evidence
+  amazon/
+    oauth.py             # LWA OAuth flow + token refresh
+    ads_api.py           # Native Amazon Ads (campaigns, reports v3, mutations)
+    mutations.py         # Write-actions: pause ad, add negative keyword, etc.
+  tiktok/
+    oauth.py             # TikTok Business OAuth + per-advertiser token store
+    client.py            # Read endpoints (campaigns, pixels, insights)
+    creatives.py         # Write endpoints (campaign / adgroup / ad creation)
+    uploads.py           # Image / video upload pipeline
+  google_ads/
+    client.py            # Native Google Ads client (SA + quota_project, MCC-aware)
+    queries.py           # GAQL helpers (campaigns, keywords, search terms, totals)
+  linkedin/
+    client.py            # Native LinkedIn Marketing API (restli encoding handled)
+    queries.py           # /rest/adAnalytics + structure queries
+    mutations.py         # Campaign group + campaign creation, status updates
   posthog/
     client.py            # PostHog Cloud SDK wrapper
   agent/
-    graph.py             # LangGraph state machine (pull_insights → reconcile → diagnose → HITL)
+    graph.py             # LangGraph state machine (recall → route → execute)
     llm.py               # LiteLLM model router (Claude Sonnet / Gemini Flash / Pro per node)
     tools.py             # Pydantic AI typed tool schemas
-    nodes/               # One file per graph node
+    nodes/               # One file per graph node (insights, roas, meta_audit, amazon_recs, tiktok_*, google_ads, linkedin_ads, ...)
+    analysis/             # Decomposers + analysts that the methodology nodes call
   reconcile/
     matcher.py           # Shopify order ↔ Meta conversion join (exact + fuzzy)
     metrics.py           # match_rate, CAPI gap, UTM coverage, true vs. reported ROAS
     recipes.py           # Canned remediation strings surfaced by /tracking_audit
+  actions/
+    models.py            # ActionProposal + chat-id constants
+    planner.py           # Generates proposals (Amazon waste-reduction, etc.)
+    approval_targets.py  # Per-slug Telegram + Discord routing for HITL inbox
   telegram/
     bot.py               # python-telegram-bot Application bootstrap
     handlers.py          # Command handlers
     auth.py              # Admin-only guard (TELEGRAM_ADMIN_IDS)
+    callbacks.py         # Approve/Reject inline-keyboard handlers
+  discord/
+    dispatcher.py        # Parse Discord message → invoke graph
+    inbox_consumer.py    # Reads sibling discord-bot's JSON inbox
+    poster.py            # Outbound proposal posts + button management
+  memory/
+    store.py             # ads_agent.agent_memory writer (pgvector + FTS)
+    recall.py            # Hybrid recall query → <prior_context> XML block
   scheduler/
     digest.py            # Daily digest + nightly reconciliation entrypoints
 ops/
   systemd/               # systemd unit for on-VM Telegram bot + webhook receiver
   nginx/                 # Example nginx reverse-proxy vhost
-  scripts/               # bootstrap_posthog.py, register_webhooks.py
+  scripts/               # bootstrap_posthog.py, register_webhooks.py, Airbyte view migrations
 ```
 
 ---
 
 ## Roadmap
 
-- [x] **v0** — Repo scaffold, store registry, LangGraph skeleton, Shopify webhook receivers, FastAPI `/healthz`
-- [x] **v1** — All 9 diagnostic commands live: `/insights`, `/roas`, `/tracking_audit`, `/ads`, `/creative`, `/ideas`, `/alerts`, `/amazon`, `/attribution`. Amazon Seller + Ads + cross-channel (Meta → Amazon) attribution wired via Airbyte direct. pgvector memory substrate with hybrid recall. Daily cron for Meta ads destination-URL snapshot.
-- [ ] **v2 (in progress)** — Autonomous action layer: per-brand autonomy thresholds, agent-proposed write-actions (pause / scale budget / swap creative), HITL approval inbox in Telegram, structured decision log in `agent_memory.kind='action_*'`. Weekly alert rules, Amazon session-refined attribution once `GET_SALES_AND_TRAFFIC_REPORT` lands.
-- [ ] **v3** — Creative generation loop: agent writes + renders new Meta ad creatives (Gemini + Imagen/Flux) based on observed winning patterns, ships them for HITL review, tracks lift. Cross-channel brand ROAS dashboard (Shopify + Amazon combined sales vs Meta + Amazon Ads combined spend).
+- [x] **v0** — Repo scaffold, store registry, LangGraph skeleton, Shopify webhook receivers, FastAPI `/healthz`.
+- [x] **v1** — All diagnostic commands live: `/insights`, `/roas`, `/tracking_audit`, `/ads`, `/creative`, `/ideas`, `/alerts`, `/amazon`, `/attribution`. Cross-channel (Meta → Amazon) attribution. pgvector memory substrate with hybrid recall. Daily cron for Meta ads destination-URL snapshot. Methodology-driven `/meta_audit` + `/amazon_recs` with Health Score 0-100 and stable check-IDs.
+- [x] **v2** — Autonomous action layer: per-brand autonomy thresholds, agent-proposed write-actions (pause / scale budget / add negative keyword), Telegram + Discord HITL approval inbox with shared resolver, structured decision log in `agent_memory.kind='action_*'`. Native channel apps shipped: Meta Marketing API, native Amazon Ads (LWA OAuth), TikTok Business (via our [SDK fork](https://github.com/glitch-exec-labs/tiktok-business-api-sdk)), Google Ads under our own MCC, LinkedIn Marketing API with elevated access. Public MCP for LinkedIn (`glitch-grow-linkedin-ad-mcp`). Engine/playbook split: brand registry env-driven, no client name in source.
+- [ ] **v2.5 (in progress)** — Glitch Grow partner-tier Amazon SP-API approval (replaces per-brand LWA), TikTok creative-upload-to-launch automation parity with the existing Meta→TikTok port flow, weekly alert rules, sessions-refined Meta→Amazon attribution once `GET_SALES_AND_TRAFFIC_REPORT` lands at scale.
+- [ ] **v3** — Creative generation loop: agent writes + renders new ad creatives (Gemini + Imagen/Flux) based on observed winning patterns, ships them for HITL review, tracks lift. Cross-channel brand ROAS dashboard (Shopify + Amazon combined sales vs Meta + Amazon + TikTok + Google + LinkedIn combined spend).
 
 ---
 
