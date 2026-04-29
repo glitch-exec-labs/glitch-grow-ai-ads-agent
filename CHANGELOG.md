@@ -13,6 +13,18 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-29
 
+- **22:51 UTC** — chore(redact): rename AYURPET_CHAT_ID symbol + redact remaining comment refs (`acf291a`) — 7 files
+    - Rename Python constant: AYURPET_CHAT_ID → LIGHTHOUSE_CHAT_ID
+      (used in actions/models.py + 5 importing modules)
+    - Redact remaining AYURPET (uppercase) refs in comments
+    - Smoke-tested: imports + graph compile clean
+    Phase 2 still pending — 152 refs remain in source code:
+      - playbook.py: default brand kwarg = 'ayurpet'
+      - meta_audit.py / amazon_recs.py: slug.startswith('ayurpet') router
+      - attribution.py: hardcoded slug → host map (theayurpet.com/.store)
+                        + slug → currency (INR/AED) + slug → amazon.in/.ae
+      - creative_critique.py: brand-specific prompt blocks
+- **22:50 UTC** — chore(redact): regenerate CHANGELOG from rewritten commit history (`743c1bc`) — 1 file
 - **22:49 UTC** — chore(redact): Phase 1 — strip client name from public-facing surfaces (`a348224`) — 18 files
     Sweep the public engine repo for hardcoded client name in:
     - README.md, pyproject.toml — narrative/docstring redaction

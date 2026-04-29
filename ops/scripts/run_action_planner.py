@@ -24,7 +24,7 @@ load_dotenv()
 
 import asyncpg
 
-from ads_agent.actions.models import AYURPET_CHAT_ID
+from ads_agent.actions.models import LIGHTHOUSE_CHAT_ID
 from ads_agent.actions.planner import plan_amazon_for_store, plan_for_store
 
 log = logging.getLogger("action_planner")
@@ -32,8 +32,8 @@ log = logging.getLogger("action_planner")
 # Map store_slug → telegram chat_id for approval prompts.
 # When a second client onboards, move this into STORES config.
 STORE_APPROVAL_CHATS: dict[str, int] = {
-    "store-a":    AYURPET_CHAT_ID,
-    "store-b": AYURPET_CHAT_ID,  # same group serves both stores
+    "store-a":    LIGHTHOUSE_CHAT_ID,
+    "store-b": LIGHTHOUSE_CHAT_ID,  # same group serves both stores
 }
 
 

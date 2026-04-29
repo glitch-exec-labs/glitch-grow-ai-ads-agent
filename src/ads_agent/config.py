@@ -171,7 +171,7 @@ STORE_TIKTOK_ACCOUNTS: dict[str, dict] = _load_store_tiktok_accounts()
 #     "<client>-global": {"property_id": "484508586", "stream_id": "14412103683"}
 #   }
 #
-# property_id  — GA4 property number (shared between IN + Global under AYURPET)
+# property_id  — GA4 property number (shared between IN + Global under <client>)
 # stream_id    — data-stream ID used to filter reports to one domain
 #
 # Stores without an entry here are skipped by GA4-dependent nodes (no error,

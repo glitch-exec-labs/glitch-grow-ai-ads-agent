@@ -394,7 +394,7 @@ async def cmd_scan_amazon(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
         return
     import asyncpg
     import os as _os
-    from ads_agent.actions.models import AYURPET_CHAT_ID
+    from ads_agent.actions.models import LIGHTHOUSE_CHAT_ID
     from ads_agent.actions.planner import plan_amazon_for_store
 
     args = ctx.args or []
@@ -412,7 +412,7 @@ async def cmd_scan_amazon(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     # Same chat used for Meta approvals — keep ops in one thread
-    chat_id = update.effective_chat.id if update.effective_chat else AYURPET_CHAT_ID
+    chat_id = update.effective_chat.id if update.effective_chat else LIGHTHOUSE_CHAT_ID
     status_msg = await update.message.reply_text(
         f"Scanning {slug} via MAP analyst for waste-reduction actions…"
     )

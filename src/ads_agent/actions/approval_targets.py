@@ -2,7 +2,7 @@
 
 Each store can be wired to receive proposals on Telegram, Discord, or both
 (during the 48h cutover window). Reads from env STORE_PROPOSAL_TARGETS_JSON;
-falls back to the original AYURPET_CHAT_ID Telegram-only behaviour if unset.
+falls back to the original LIGHTHOUSE_CHAT_ID Telegram-only behaviour if unset.
 
 env shape:
   STORE_PROPOSAL_TARGETS_JSON = {
@@ -73,7 +73,7 @@ _TARGETS: dict[str, ProposalTarget] | None = None
 def proposal_target(slug: str) -> ProposalTarget | None:
     """Return the ProposalTarget for a slug, or None if not configured.
 
-    Falls back to legacy AYURPET_CHAT_ID for <client>-* if the env var is
+    Falls back to legacy LIGHTHOUSE_CHAT_ID for <client>-* if the env var is
     unset, so a fresh deploy of just this code without env updates still
     posts to Telegram exactly as before.
     """
@@ -88,9 +88,9 @@ def proposal_target(slug: str) -> ProposalTarget | None:
     # Legacy fallback — keep <client> on Telegram if env not configured
     if slug.startswith("ayurpet"):
         try:
-            from ads_agent.actions.models import AYURPET_CHAT_ID
+            from ads_agent.actions.models import LIGHTHOUSE_CHAT_ID
             return ProposalTarget(
-                telegram_chat_id=AYURPET_CHAT_ID,
+                telegram_chat_id=LIGHTHOUSE_CHAT_ID,
                 discord_channel_id=None,
             )
         except Exception:  # noqa: BLE001
@@ -110,7 +110,7 @@ def configured_slugs() -> list[str]:
     if _TARGETS is None:
         _TARGETS = _load_from_env()
     out = list(_TARGETS.keys())
-    # Always include <client>-* if AYURPET_CHAT_ID is reachable (back-compat)
+    # Always include <client>-* if LIGHTHOUSE_CHAT_ID is reachable (back-compat)
     for slug in ("ayurpet-ind", "ayurpet-global"):
         if slug not in out and proposal_target(slug):
             out.append(slug)

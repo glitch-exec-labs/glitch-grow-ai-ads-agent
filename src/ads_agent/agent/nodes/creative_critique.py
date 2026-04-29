@@ -31,12 +31,12 @@ FAMILY_CONTEXT = {
     "classicoo": "URBAN FAMILY (see urban).",
     "trendsetters": "URBAN FAMILY (see urban).",
     "ayurpet-ind": (
-        "AYURPET context: legitimate pet-health/supplement brand. India market. Longer consideration "
+        "<client> context: legitimate pet-health/supplement brand. India market. Longer consideration "
         "cycle than dropship; trust + authenticity + product ingredient clarity matter. "
         "Judge: does it build brand equity, is the health claim credible, would a pet owner trust this."
     ),
     "ayurpet-global": (
-        "AYURPET (Global storefront): same brand, international pet owners. English copy. "
+        "<client> (Global storefront): same brand, international pet owners. English copy. "
         "Same criteria but test for clarity across non-Indian audiences."
     ),
     "mokshya": (

@@ -43,7 +43,7 @@ import asyncpg
 import httpx
 
 from ads_agent.actions.guardrails import GuardrailViolation
-from ads_agent.actions.models import ActionProposal, AYURPET_CHAT_ID
+from ads_agent.actions.models import ActionProposal, LIGHTHOUSE_CHAT_ID
 from ads_agent.actions.notifier import TelegramNotifyError, post_proposal
 from ads_agent.amazon.ads_api import (
     AmazonAdsError as MapMcpError,    # alias keeps existing except-clauses working

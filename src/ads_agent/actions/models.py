@@ -108,7 +108,7 @@ ACTION_TO_MCP: dict[str, tuple[str, str, Any]] = {
 # Chat that receives approval prompts. Hardcoded for Ayurpet v1 — when we
 # onboard a second brand this moves into STORES config.
 # Group was upgraded to supergroup on 2026-04-20, chat_id shifted accordingly.
-AYURPET_CHAT_ID = -1003881144191   # "Ayurpet X Glitch Grow" (supergroup)
+LIGHTHOUSE_CHAT_ID = -1003881144191   # "Glitch Grow client supergroup" (supergroup)
 
 
 @dataclass
