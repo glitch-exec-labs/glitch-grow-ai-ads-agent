@@ -13,7 +13,9 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-29
 
-- **20:00 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`61e8f95`) — 1 file
+- **20:25 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`8b3a3ec`)
+- **20:25 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`02b9048`) — 9 files
+- **19:29 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`fe26957`)
 - **19:28 UTC** — feat(google_ads): native API client + agent node — multi-tenant via MCC (`d3fba05`) — 8 files
     - google_ads/client.py: SA + quota_project override, MCC-aware client cache,
       customer_id resolver from STORE_GOOGLE_ADS_ACCOUNTS_JSON, list_mcc_clients
