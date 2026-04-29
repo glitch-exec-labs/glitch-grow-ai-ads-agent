@@ -13,7 +13,18 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-29
 
-- **23:15 UTC** — auto-sync: 2026-04-29 23:15 UTC (`6be1aa3`) — 28 files
+- **23:19 UTC** — feat(brand-registry): Phase 2 — env-driven brand registry, engine fully neutral (`13e9b21`) — 3 files
+    Add ads_agent/brand_registry.py as the single source of truth for slug →
+    {brand_key, primary_market, shop_host, amazon_marketplace, currency}.
+    Driven by STORE_BRAND_REGISTRY_JSON env var. The engine now has zero
+    hardcoded brand-specific routing.
+    Refactored callers:
+      - playbook.py — default brand kwarg now 'default' (was a real brand name)
+      - meta_audit.py — _brand_for() delegates to brand_registry.brand_for()
+      - amazon_recs.py — same
+      - attribution.py — slug→host, slug→amazon-marketplace, slug→currency all
+        flow through the registry; FX_TO_INR table replaces hardcoded ternaries
+- **23:15 UTC** — auto-sync: 2026-04-29 23:15 UTC (`a774dc7`) — 29 files
         M	ops/scripts/migrate_airbyte_amazon_financials_view.sql
         M	ops/scripts/migrate_airbyte_amazon_sku_view.sql
         M	ops/scripts/migrate_airbyte_amazon_traffic_view.sql
