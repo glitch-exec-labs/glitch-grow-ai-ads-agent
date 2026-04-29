@@ -11,6 +11,10 @@ Body text (if present) shown as indented sub-bullets.
 
 ---
 
+## 2026-04-30
+
+- **00:15 UTC** — chore(redact): regen CHANGELOG (extended history scrub) (`82c8fdd`) — 1 file
+
 ## 2026-04-29
 
 - **23:19 UTC** — chore(redact): regen CHANGELOG (final scrub of historic body refs) (`7dbb217`) — 1 file
