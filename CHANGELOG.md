@@ -13,8 +13,9 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-29
 
-- **23:19 UTC** — chore(redact): regen CHANGELOG after final commit-message scrub (`a950d45`) — 1 file
-- **23:19 UTC** — feat(brand-registry): Phase 2 — env-driven brand registry, engine fully neutral (`011aed3`) — 3 files
+- **23:19 UTC** — chore(redact): regen CHANGELOG (final scrub of historic body refs) (`7dbb217`) — 1 file
+- **23:19 UTC** — chore(redact): regen CHANGELOG after final commit-message scrub (`0a171ac`) — 1 file
+- **23:19 UTC** — feat(brand-registry): Phase 2 — env-driven brand registry, engine fully neutral (`63b8363`) — 3 files
     Add ads_agent/brand_registry.py as the single source of truth for slug →
     {brand_key, primary_market, shop_host, amazon_marketplace, currency}.
     Driven by STORE_BRAND_REGISTRY_JSON env var. The engine now has zero
@@ -25,14 +26,14 @@ Body text (if present) shown as indented sub-bullets.
       - amazon_recs.py — same
       - attribution.py — slug→host, slug→amazon-marketplace, slug→currency all
         flow through the registry; FX_TO_INR table replaces hardcoded ternaries
-- **23:15 UTC** — auto-sync: 2026-04-29 23:15 UTC (`261d355`) — 29 files
+- **23:15 UTC** — auto-sync: 2026-04-29 23:15 UTC (`a299f1f`) — 29 files
         M	ops/scripts/migrate_airbyte_amazon_financials_view.sql
         M	ops/scripts/migrate_airbyte_amazon_sku_view.sql
         M	ops/scripts/migrate_airbyte_amazon_traffic_view.sql
         M	ops/scripts/migrate_airbyte_amazon_view.sql
         M	ops/scripts/migrate_airbyte_amazon_view_v2.sql
         ... (+23 more)
-- **23:00 UTC** — chore(redact): rename LIGHTHOUSE_CHAT_ID symbol + redact remaining comment refs (`14c324d`) — 8 files
+- **23:00 UTC** — chore(redact): rename LIGHTHOUSE_CHAT_ID symbol + redact remaining comment refs (`dfcc924`) — 8 files
     - Rename Python constant: LIGHTHOUSE_CHAT_ID → LIGHTHOUSE_CHAT_ID
       (used in actions/models.py + 5 importing modules)
     - Redact remaining <client> (uppercase) refs in comments
@@ -43,8 +44,8 @@ Body text (if present) shown as indented sub-bullets.
       - attribution.py: hardcoded slug → host map (the<client>.com/.store)
                         + slug → currency (INR/AED) + slug → amazon.in/.ae
       - creative_critique.py: brand-specific prompt blocks
-- **22:50 UTC** — chore(redact): regenerate CHANGELOG from rewritten commit history (`743c1bc`) — 1 file
-- **22:49 UTC** — chore(redact): Phase 1 — strip client name from public-facing surfaces (`a348224`) — 18 files
+- **22:50 UTC** — chore(redact): regenerate CHANGELOG from rewritten commit history (`c9d259c`) — 1 file
+- **22:49 UTC** — chore(redact): Phase 1 — strip client name from public-facing surfaces (`a83dbd7`) — 18 files
     Sweep the public engine repo for hardcoded client name in:
     - README.md, pyproject.toml — narrative/docstring redaction
     - ops/scripts/*.py — example help text + docstrings
@@ -55,7 +56,7 @@ Body text (if present) shown as indented sub-bullets.
     brand prompts, telegram/discord fallback slugs. Those need a proper
     refactor to env-driven brand registry — separate PR with tests so
     behavior is preserved.
-- **22:45 UTC** — chore(docs): redact client account ids + MCC number from public surface (`1e81605`) — 2 files
+- **22:45 UTC** — chore(docs): redact client account ids + MCC number from public surface (`ce98f4e`) — 2 files
     The README and changelog had leaked our Google Ads MCC number and a
     client's LinkedIn/Google ad account ids. This repo is public — those
     identifiers should never have been in commit messages or rendered docs.
@@ -66,8 +67,8 @@ Body text (if present) shown as indented sub-bullets.
     If you have a local clone, fetch + reset:
       git fetch --tags --force
       git reset --hard origin/main
-- **21:00 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`dad07ee`) — 1 file
-- **21:00 UTC** — docs(readme): reflect new platform surface — Google Ads, LinkedIn Ads, native TikTok/Meta apps (`e2f3c92`) — 1 file
+- **21:00 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`8b844cf`) — 1 file
+- **21:00 UTC** — docs(readme): reflect new platform surface — Google Ads, LinkedIn Ads, native TikTok/Meta apps (`62694ec`) — 1 file
     What changed since the last README pass:
     - Native Google Ads (own MCC <redacted-mcc-id>) — read + write, multi-tenant
       by client linking under our manager account
@@ -78,9 +79,9 @@ Body text (if present) shown as indented sub-bullets.
       partner-tier app application is pending. Removed "Supermetrics
       fallback" wording — Supermetrics path is fully torn out
     - New public sibling: glitch-grow-linkedin-ad-mcp (MIT) — anyone can
-- **20:45 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`416c1d6`) — 1 file
-- **20:42 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`dbb6e39`)
-- **20:42 UTC** — feat(linkedin): write API helpers — campaign group + campaign creation, status updates (`8e1ffbe`) — 2 files
+- **20:45 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`0533041`) — 1 file
+- **20:42 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`fefa038`)
+- **20:42 UTC** — feat(linkedin): write API helpers — campaign group + campaign creation, status updates (`72d9af8`) — 2 files
     - mutations.py: create_campaign_group, create_campaign, update_*_status
       with all the LinkedIn-specific gotchas baked in (politicalIntent
       required as 202404, totalBudget min $100, runSchedule.start ≥ now,
@@ -91,11 +92,11 @@ Body text (if present) shown as indented sub-bullets.
     Live verified on <client> demo account <redacted-account-id>:
       group  <redacted-group-id> (DRAFT, $100)
       camp   <redacted-campaign-id> (DRAFT, TEXT_AD, $10/day)
-- **20:30 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`4a82e32`) — 1 file
-- **20:25 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`e28da9f`)
-- **20:25 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`0ea4a6d`) — 9 files
-- **19:29 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`63cae21`)
-- **19:28 UTC** — feat(google_ads): native API client + agent node — multi-tenant via MCC (`6c7eab8`) — 8 files
+- **20:30 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`a1c5dba`) — 1 file
+- **20:25 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`f5e6a1a`)
+- **20:25 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`66eae18`) — 9 files
+- **19:29 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`6ad941d`)
+- **19:28 UTC** — feat(google_ads): native API client + agent node — multi-tenant via MCC (`fe81a8d`) — 8 files
     - google_ads/client.py: SA + quota_project override, MCC-aware client cache,
       customer_id resolver from STORE_GOOGLE_ADS_ACCOUNTS_JSON, list_mcc_clients
     - google_ads/queries.py: GAQL helpers — campaigns, keywords, search_terms,
@@ -106,16 +107,16 @@ Body text (if present) shown as indented sub-bullets.
     Auth verified live: SA glitch-vertex-ai@capable-boulder-487806-j0 +
     quota project gen-lang-client-0187466920 (Default Gemini Project where
     dev token was approved) + Service Usage Consumer IAM grant. MCC <redacted-mcc-id>
-- **19:15 UTC** — auto-sync: 2026-04-29 06:00 UTC (`871fa07`) — 2 files
+- **19:15 UTC** — auto-sync: 2026-04-29 06:00 UTC (`f83e31d`) — 2 files
         M	src/ads_agent/amazon/ads_api.py
-- **05:45 UTC** — auto-sync: 2026-04-29 05:45 UTC (`96fa04e`) — 2 files
+- **05:45 UTC** — auto-sync: 2026-04-29 05:45 UTC (`80d8222`) — 2 files
         M	src/ads_agent/amazon/ads_api.py
-- **05:30 UTC** — Merge remote-tracking branch 'origin/main' (`b2fb96b`) — 1 file
+- **05:30 UTC** — Merge remote-tracking branch 'origin/main' (`960d8ab`) — 1 file
 
 ## 2026-04-28
 
-- **22:22 UTC** — Merge remote-tracking branch 'origin/main' (`6519742`)
-- **22:22 UTC** — feat(amazon): migrate from MAP to native Amazon Ads API (LWA OAuth) (`33930bf`) — 8 files
+- **22:22 UTC** — Merge remote-tracking branch 'origin/main' (`5139337`)
+- **22:22 UTC** — feat(amazon): migrate from MAP to native Amazon Ads API (LWA OAuth) (`ff3e3aa`) — 8 files
     The MAP (Marketplace Ad Pros) Bearer-auth proxy is gone. All Amazon
     Ads reads + writes now go through native LWA OAuth tokens stored in
     ads_agent.amazon_oauth_tokens. Token cached on the row, profile_ids
@@ -126,15 +127,15 @@ Body text (if present) shown as indented sub-bullets.
         AMAZON_ACCOUNTS_JSON marketplace mapping. Cached in-process.
       - list_sp_campaigns / list_sp_ad_groups / list_sp_keywords /
         list_sp_targets / list_sp_product_ads / list_sp_negative_keywords
-- **22:15 UTC** — auto-sync: 2026-04-28 22:15 UTC (`462dfc0`) — 6 files
+- **22:15 UTC** — auto-sync: 2026-04-28 22:15 UTC (`95f9188`) — 6 files
         M	src/ads_agent/agent/analysis/campaign_decomposer.py
         M	src/ads_agent/agent/nodes/amazon_insights.py
         M	src/ads_agent/agent/nodes/amazon_recs.py
         A	src/ads_agent/amazon/ads_api.py
         A	src/ads_agent/amazon/mutations.py
-- **22:00 UTC** — Merge remote-tracking branch 'origin/main' (`8fcc2fd`) — 1 file
-- **18:50 UTC** — Merge remote-tracking branch 'origin/main' (`df7e8a9`)
-- **18:50 UTC** — feat(meta_audit): name-vs-URL cross-evidence — catch misnamed campaigns (`1290775`) — 4 files
+- **22:00 UTC** — Merge remote-tracking branch 'origin/main' (`4ca084d`) — 1 file
+- **18:50 UTC** — Merge remote-tracking branch 'origin/main' (`acb00a5`)
+- **18:50 UTC** — feat(meta_audit): name-vs-URL cross-evidence — catch misnamed campaigns (`6f67f06`) — 4 files
     After fixing the sync-side destination_url bug, a fresh decompose surfaced
     a second class of error: campaigns named like Amazon work whose ads
     actually point at Shopify URLs. On <client>, ₹22.5k of 14d spend (13 ads
@@ -145,9 +146,9 @@ Body text (if present) shown as indented sub-bullets.
     ## What the engine now does (brand-neutral)
     src/ads_agent/meta/destinations.py — two new helpers:
       classify_name(*texts) → {amazon_intent: bool, market_hint: AE|IN|unknown}
-- **18:45 UTC** — Merge remote-tracking branch 'origin/main' (`bdb00a5`) — 1 file
-- **18:34 UTC** — Merge remote-tracking branch 'origin/main' (`9e1db4d`)
-- **18:34 UTC** — fix(sync_meta_ads): destination_url silently nulled for ASC+ video creatives (`12a721f`) — 1 file
+- **18:45 UTC** — Merge remote-tracking branch 'origin/main' (`aff67d5`) — 1 file
+- **18:34 UTC** — Merge remote-tracking branch 'origin/main' (`7c9975c`)
+- **18:34 UTC** — fix(sync_meta_ads): destination_url silently nulled for ASC+ video creatives (`0b10e9f`) — 1 file
     The Meta sync was requesting `object_story_spec.video_data.call_to_action`
     without expanding `value{link}`. Meta returned the CTA wrapper but no
     link, so the extractor's video_data branch always got None — even when
@@ -158,9 +159,9 @@ Body text (if present) shown as indented sub-bullets.
         dashboard — 64% under-reported
       - amazon_attribution_daily_v missed half the Amazon-destined budget,
         making earlier audit halo numbers (4.00× IND, 2.94× AE) too low
-- **18:30 UTC** — Merge remote-tracking branch 'origin/main' (`a9ba8fe`) — 1 file
-- **02:40 UTC** — Merge remote-tracking branch 'origin/main' (`634f638`)
-- **02:39 UTC** — fix(meta_audit): Phase A + B — campaign-level halo stamping + citation verifier (`3b837fc`) — 4 files
+- **18:30 UTC** — Merge remote-tracking branch 'origin/main' (`49abae4`) — 1 file
+- **02:40 UTC** — Merge remote-tracking branch 'origin/main' (`78c7acc`)
+- **02:39 UTC** — fix(meta_audit): Phase A + B — campaign-level halo stamping + citation verifier (`d6ac4f2`) — 4 files
     After the per-ad halo stamp (ab99d05), the LLM still hallucinated
     campaign-level halo digits because ASC+ campaigns force campaign-level
     verdicts and the analyst was attempting weighted-mean math itself.
@@ -171,9 +172,9 @@ Body text (if present) shown as indented sub-bullets.
       amazon_destined_spend
       amazon_destined_spend_pct
       amazon_halo_blended       — spend-weighted mean across the campaign's ASINs
-- **02:30 UTC** — Merge remote-tracking branch 'origin/main' (`4c3c5f2`) — 1 file
-- **02:25 UTC** — Merge remote-tracking branch 'origin/main' (`5dd4c18`)
-- **02:24 UTC** — fix(meta_audit): stamp per-ASIN halo onto every Amazon-destined AdRow (`4cc441b`) — 2 files
+- **02:30 UTC** — Merge remote-tracking branch 'origin/main' (`0aa7e5a`) — 1 file
+- **02:25 UTC** — Merge remote-tracking branch 'origin/main' (`41876d8`)
+- **02:24 UTC** — fix(meta_audit): stamp per-ASIN halo onto every Amazon-destined AdRow (`de160d6`) — 2 files
     First live run of the destination-aware lens revealed the LLM sometimes
     mis-quotes per-ASIN halo numbers — picking the wrong row from
     amazon_halo.per_asin. Two audits of the same <client> account on the
@@ -184,12 +185,12 @@ Body text (if present) shown as indented sub-bullets.
     Fix: pre-resolve the per-ASIN halo at decompose time and attach to
     each AdRow:
       AdRow.target_asin_halo_roas
-- **02:15 UTC** — Merge remote-tracking branch 'origin/main' (`d6a9e89`) — 1 file
+- **02:15 UTC** — Merge remote-tracking branch 'origin/main' (`844d10a`) — 1 file
 
 ## 2026-04-27
 
-- **23:57 UTC** — Merge remote-tracking branch 'origin/main' (`4441997`)
-- **23:57 UTC** — feat(meta_audit): destination tagging + Amazon halo data — engine-neutral (`1670186`) — 5 files
+- **23:57 UTC** — Merge remote-tracking branch 'origin/main' (`6e206f0`)
+- **23:57 UTC** — feat(meta_audit): destination tagging + Amazon halo data — engine-neutral (`d0b3536`) — 5 files
     Engine-level capability. Methodology (M40 / RECLAIM verb) lives in the
     <client> playbook brief only — other brands see the data but their
     briefs don't reference it, so behaviour is unchanged.
@@ -200,7 +201,7 @@ Body text (if present) shown as indented sub-bullets.
       - hierarchy.destination_mix — spend/purchases/meta-ROAS per destination bucket
       - hierarchy.amazon_halo   — INR-normalised cross-channel halo from
                                   ads_agent.amazon_attribution_daily_v
-- **23:45 UTC** — docs: README — dual transport, methodology audits, TikTok, 4-repo fleet (`81d1ec3`) — 2 files
+- **23:45 UTC** — docs: README — dual transport, methodology audits, TikTok, 4-repo fleet (`490ebd8`) — 2 files
     The README claimed "single Telegram surface" and "Telegram-first
     operator interface" — both stale. Updated to reflect:
       - Dual transport: same agent core serves Telegram and Discord,
@@ -214,7 +215,7 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-25
 
-- **20:27 UTC** — docs: README — dual transport, methodology audits, TikTok, 4-repo fleet (`d7ab067`) — 1 file
+- **20:27 UTC** — docs: README — dual transport, methodology audits, TikTok, 4-repo fleet (`37a397a`) — 1 file
     The README claimed "single Telegram surface" and "Telegram-first
     operator interface" — both stale. Updated to reflect:
       - Dual transport: same agent core serves Telegram and Discord,
@@ -225,10 +226,10 @@ Body text (if present) shown as indented sub-bullets.
         Feb 2025 / OCAPI EOL / Threads GA).
       - TikTok integration: read commands + Meta→TikTok port workflow
         (extract winning Meta video, upload, build DISABLED launch with
-- **20:18 UTC** — Merge remote-tracking branch 'origin/main' (`a597d7f`) — 1 file
+- **20:18 UTC** — Merge remote-tracking branch 'origin/main' (`7e16c43`) — 1 file
     # Conflicts:
     #	CHANGELOG.md
-- **20:18 UTC** — feat(meta_audit): Phase A+B engine — Health Score + Quick Wins + diversity + EMQ (`96b938e`) — 2 files
+- **20:18 UTC** — feat(meta_audit): Phase A+B engine — Health Score + Quick Wins + diversity + EMQ (`4f752b9`) — 2 files
     Inspired by AgriciDaniel/claude-ads structure but adapted to our live-API
     agent. Their model is paste-export-into-Claude; we keep the live-data
     + HITL execution edge while borrowing the parts that make their reports
@@ -239,20 +240,20 @@ Body text (if present) shown as indented sub-bullets.
     reference docs from playbooks/refs/. Falls back to public repo, then
     to "" so the analyst's inline prompt remains the safety net.
     src/ads_agent/agent/analysis/meta_audit_analyst.py:
-- **20:15 UTC** — auto-sync: 2026-04-25 20:15 UTC (`e26c343`) — 7 files
+- **20:15 UTC** — auto-sync: 2026-04-25 20:15 UTC (`db970fa`) — 7 files
         A	src/ads_agent/actions/diversity.py
         M	src/ads_agent/agent/analysis/meta_audit_analyst.py
         M	src/ads_agent/agent/analysis/meta_decomposer.py
         M	src/ads_agent/agent/nodes/meta_audit.py
         A	src/ads_agent/meta/emq.py
         ... (+1 more)
-- **20:00 UTC** — Merge remote-tracking branch 'origin/main' (`548ce19`) — 1 file
+- **20:00 UTC** — Merge remote-tracking branch 'origin/main' (`9d04347`) — 1 file
     # Conflicts:
     #	CHANGELOG.md
-- **00:34 UTC** — Merge remote-tracking branch 'origin/main' (`f550a99`) — 1 file
+- **00:34 UTC** — Merge remote-tracking branch 'origin/main' (`dffe16f`) — 1 file
     # Conflicts:
     #	CHANGELOG.md
-- **00:34 UTC** — feat(actions): Discord cutover for proposal approvals — dual-post + shared resolver (`90e3214`) — 4 files
+- **00:34 UTC** — feat(actions): Discord cutover for proposal approvals — dual-post + shared resolver (`3027609`) — 4 files
     The proposal flow used to be Telegram-only: post_proposal() took an int
     chat_id, sent to TG, persisted telegram_message_id, and the
     telegram/callbacks.py button handler resolved approve/reject. The client
