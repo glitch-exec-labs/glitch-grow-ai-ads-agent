@@ -13,7 +13,19 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-29
 
-- **19:00 UTC** — auto-sync: 2026-04-29 06:00 UTC (`dcd0d8f`) — 2 files
+- **20:00 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`61e8f95`) — 1 file
+- **19:28 UTC** — feat(google_ads): native API client + agent node — multi-tenant via MCC (`d3fba05`) — 8 files
+    - google_ads/client.py: SA + quota_project override, MCC-aware client cache,
+      customer_id resolver from STORE_GOOGLE_ADS_ACCOUNTS_JSON, list_mcc_clients
+    - google_ads/queries.py: GAQL helpers — campaigns, keywords, search_terms,
+      account_totals (returns plain dicts, cost in dollars)
+    - agent/nodes/google_ads.py: /google_ads node with graceful "not yet linked"
+      path that lists MCC roster as operator guidance
+    - Wired into graph router + Telegram /google_ads + Discord SIMPLE_STORE_N
+    Auth verified live: SA glitch-vertex-ai@capable-boulder-487806-j0 +
+    quota project gen-lang-client-0187466920 (Default Gemini Project where
+    dev token was approved) + Service Usage Consumer IAM grant. MCC 8008852484
+- **19:15 UTC** — auto-sync: 2026-04-29 06:00 UTC (`f92c53e`) — 2 files
         M	src/ads_agent/amazon/ads_api.py
 - **05:45 UTC** — auto-sync: 2026-04-29 05:45 UTC (`53658c0`) — 2 files
         M	src/ads_agent/amazon/ads_api.py
@@ -21,6 +33,7 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-28
 
+- **22:22 UTC** — Merge remote-tracking branch 'origin/main' (`3bef642`)
 - **22:22 UTC** — feat(amazon): migrate from MAP to native Amazon Ads API (LWA OAuth) (`0f67f22`) — 8 files
     The MAP (Marketplace Ad Pros) Bearer-auth proxy is gone. All Amazon
     Ads reads + writes now go through native LWA OAuth tokens stored in
