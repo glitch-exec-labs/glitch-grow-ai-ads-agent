@@ -495,32 +495,45 @@ async def get_campaign_metrics(
 
 
 async def get_keyword_metrics(slug: str, days: int = 14) -> list[dict]:
-    """Per-keyword metrics via Reports v3. Returns one row per keywordId."""
+    """Per-keyword metrics via Reports v3 (spTargeting / SUMMARY).
+
+    Note: spTargeting uses `keyword` (not `keywordText`) for the text
+    field; ROAS column is `roasClicks14d` (no `roasClicks1d` exists for
+    this report type). Returns one row per (keywordId | targetId).
+    Caller distinguishes keywords from product targets by `keyword` /
+    `targeting` field presence.
+    """
     return await _run_report(slug, days, group_by="targeting", report_type="spTargeting", columns=[
-        "keywordId", "keywordText", "matchType", "adGroupId", "campaignId",
-        "impressions", "clicks", "cost",
-        "sales1d", "purchases1d", "unitsSoldClicks1d",
-        "acosClicks1d", "roasClicks1d",
+        "keywordId", "keyword", "matchType", "adGroupId", "campaignId",
+        "campaignStatus", "impressions", "clicks", "cost",
+        "sales1d", "sales7d", "sales14d",
+        "purchases1d", "purchases7d", "purchases14d",
+        "unitsSoldClicks1d", "roasClicks14d",
     ])
 
 
 async def get_target_metrics(slug: str, days: int = 14) -> list[dict]:
-    """Per-product-target metrics via Reports v3."""
+    """Per-product-target metrics. spTargeting report covers both keywords
+    AND product targets; caller filters by `targeting` field presence."""
     return await _run_report(slug, days, group_by="targeting", report_type="spTargeting", columns=[
-        "targetId", "targetingExpression", "targetingText", "targetingType",
-        "matchType", "adGroupId", "campaignId",
-        "impressions", "clicks", "cost",
-        "sales1d", "purchases1d", "unitsSoldClicks1d",
+        "targetId", "targeting", "matchType", "adGroupId", "campaignId",
+        "campaignStatus", "impressions", "clicks", "cost",
+        "sales1d", "sales7d", "sales14d",
+        "purchases1d", "purchases7d", "purchases14d",
+        "unitsSoldClicks1d", "roasClicks14d",
     ])
 
 
 async def get_ad_metrics(slug: str, days: int = 14) -> list[dict]:
-    """Per-product-ad (advertised ASIN) metrics via Reports v3."""
+    """Per-product-ad (advertised ASIN) metrics via Reports v3
+    (spAdvertisedProduct / SUMMARY). Same caveat as keywords: 14d ROAS
+    column is `roasClicks14d`, not `roasClicks1d`."""
     return await _run_report(slug, days, group_by="advertiser", report_type="spAdvertisedProduct", columns=[
         "advertisedAsin", "advertisedSku", "adId", "adGroupId", "campaignId",
-        "impressions", "clicks", "cost",
-        "sales1d", "purchases1d", "unitsSoldClicks1d",
-        "acosClicks1d", "roasClicks1d",
+        "campaignStatus", "impressions", "clicks", "cost",
+        "sales1d", "sales7d", "sales14d",
+        "purchases1d", "purchases7d", "purchases14d",
+        "unitsSoldClicks1d", "roasClicks14d",
     ])
 
 
