@@ -146,6 +146,11 @@ def request(
         headers["LinkedIn-Version"] = _api_version()
     if json_body is not None:
         headers["Content-Type"] = "application/json"
+    # Restli partial-update bodies use the `{"patch":{"$set":{...}}}` shape.
+    # LinkedIn requires X-RestLi-Method: PARTIAL_UPDATE on those calls so
+    # the request gets routed through the merge handler instead of full-replace.
+    if isinstance(json_body, dict) and "patch" in json_body:
+        headers["X-RestLi-Method"] = "PARTIAL_UPDATE"
 
     # LinkedIn's /rest/* parsers are picky about URL encoding — commas in
     # `fields=…` and colons in URN values must NOT be percent-encoded, but
@@ -186,11 +191,19 @@ def request(
             f"LinkedIn {method} {path} [{r.status_code}]: {r.text[:300]}"
         )
     if not r.content:
-        return {}
+        # Many LinkedIn write endpoints return 201 + empty body, with the
+        # created entity's id in the `x-restli-id` (or `x-linkedin-id`)
+        # header. Surface that to the caller.
+        rid = r.headers.get("x-restli-id") or r.headers.get("x-linkedin-id") or ""
+        return {"_id": rid, "_status": r.status_code}
     try:
-        return r.json()
+        body = r.json()
     except json.JSONDecodeError as e:
         raise LinkedInError(f"non-JSON body from {path}: {r.text[:200]}") from e
+    rid = r.headers.get("x-restli-id") or r.headers.get("x-linkedin-id")
+    if rid and isinstance(body, dict) and "_id" not in body:
+        body = {**body, "_id": rid}
+    return body
 
 
 # ----- account roster -----------------------------------------------------
