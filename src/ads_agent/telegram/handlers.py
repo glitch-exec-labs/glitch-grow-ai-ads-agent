@@ -37,6 +37,7 @@ async def cmd_help(update: Update, _ctx: ContextTypes.DEFAULT_TYPE) -> None:
         "`/amazon <store> [days]` — Amazon Seller + Ads rollup (MAP for ads, Airbyte for Seller)\n"
         "`/amazon_recs <store>` — Amazon's own bid/budget/keyword recs via MAP\n"
         "`/meta_audit <store> [days]` — D2C Meta ads operator audit (campaign→adset→ad, SCALE/REFRESH/PAUSE/WATCH)\n"
+        "`/google_ads <store> [days]` — Google Ads campaign roster + zero-conv search terms (via MCC link)\n"
         "`/tiktok <store> [days]` — TikTok advertiser snapshot + paid media totals\n"
         "`/attribution <store> [days]` — Meta → Amazon attribution (sessions-delta model)\n"
         "\n"
@@ -168,6 +169,13 @@ async def cmd_meta_audit(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None
     if not is_admin(update):
         return
     await _run_and_reply(update, "meta_audit", 14, ctx.args or [])
+
+
+async def cmd_google_ads(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+    """Google Ads roster + per-campaign metrics for a store linked under our MCC."""
+    if not is_admin(update):
+        return
+    await _run_and_reply(update, "google_ads", 14, ctx.args or [])
 
 
 async def cmd_tiktok(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
