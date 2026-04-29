@@ -470,7 +470,7 @@ async def get_campaign_metrics(
         raise AmazonAdsError(f"reports/create returned no reportId: {create}")
 
     # Poll
-    for i in range(120):                # up to 6 min total
+    for i in range(200):  # 200 × 3s = 10 min cap                # up to 6 min total
         await asyncio.sleep(3)
         status = await _get(f"/reporting/reports/{report_id}", profile_id=pid,
                             accept="application/vnd.createasyncreportrequest.v3+json",
@@ -564,7 +564,7 @@ async def _run_report(
     report_id = create.get("reportId")
     if not report_id:
         raise AmazonAdsError(f"reports/create returned no reportId: {create}")
-    for i in range(120):  # 6 min cap
+    for i in range(200):  # 200 × 3s = 10 min cap  # 6 min cap
         await asyncio.sleep(3)
         status = await _get(f"/reporting/reports/{report_id}", profile_id=pid,
                             accept="application/vnd.createasyncreportrequest.v3+json",
