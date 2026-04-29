@@ -13,6 +13,19 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-29
 
+- **20:42 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`b2a6511`)
+- **20:42 UTC** — feat(linkedin): write API helpers — campaign group + campaign creation, status updates (`c4692db`) — 2 files
+    - mutations.py: create_campaign_group, create_campaign, update_*_status
+      with all the LinkedIn-specific gotchas baked in (politicalIntent
+      required as 202404, totalBudget min $100, runSchedule.start ≥ now,
+      DRAFT campaigns inside DRAFT groups, %3A vs literal colons in URNs)
+    - client.py: handle restli partial-update protocol (X-RestLi-Method
+      PARTIAL_UPDATE header), surface created-entity ids from x-restli-id
+      response header
+    Live verified on Nuraveda demo account 504466548:
+      group  938600016 (DRAFT, $100)
+      camp   647415626 (DRAFT, TEXT_AD, $10/day)
+- **20:30 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`f43b850`) — 1 file
 - **20:25 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`8b3a3ec`)
 - **20:25 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`02b9048`) — 9 files
 - **19:29 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`fe26957`)
