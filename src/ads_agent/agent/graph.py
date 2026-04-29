@@ -25,6 +25,7 @@ from ads_agent.agent.nodes.attribution import attribution_node
 from ads_agent.agent.nodes.creative_critique import creative_critique_node
 from ads_agent.agent.nodes.google_ads import google_ads_node
 from ads_agent.agent.nodes.ideas import ideas_node
+from ads_agent.agent.nodes.linkedin_ads import linkedin_ads_node
 from ads_agent.agent.nodes.meta_audit import meta_audit_node
 from ads_agent.agent.nodes.pull_insights import pull_insights_node
 from ads_agent.agent.nodes.roas_compute import roas_compute_node
@@ -93,6 +94,7 @@ def _route(state: AgentState) -> str:
         'amazon_recs': 'amazon_recs',
         'meta_audit':  'meta_audit',
         'google_ads':  'google_ads',
+        'linkedin_ads': 'linkedin_ads',
         'attribution': 'attribution',
         'tiktok': 'tiktok_insights',
         'tiktok_campaigns': 'tiktok_campaigns',
@@ -118,6 +120,7 @@ def build_graph():
     g.add_node('amazon_recs', amazon_recs_node)
     g.add_node('meta_audit', meta_audit_node)
     g.add_node('google_ads', google_ads_node)
+    g.add_node('linkedin_ads', linkedin_ads_node)
     g.add_node('attribution', attribution_node)
     g.add_node('tiktok_insights', tiktok_insights_node)
     g.add_node('tiktok_campaigns', tiktok_campaigns_node)
@@ -141,6 +144,7 @@ def build_graph():
         'amazon_recs',
         'meta_audit',
         'google_ads',
+        'linkedin_ads',
         'attribution',
         'tiktok_insights',
         'tiktok_campaigns',

@@ -22,6 +22,7 @@ from ads_agent.telegram.handlers import (
     cmd_amazon,
     cmd_amazon_recs,
     cmd_google_ads,
+    cmd_linkedin_ads,
     cmd_meta_audit,
     cmd_attribution,
     cmd_scan_amazon,
@@ -70,6 +71,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("amazon_recs", cmd_amazon_recs))
     app.add_handler(CommandHandler("meta_audit", cmd_meta_audit))
     app.add_handler(CommandHandler("google_ads", cmd_google_ads))
+    app.add_handler(CommandHandler("linkedin_ads", cmd_linkedin_ads))
     app.add_handler(CommandHandler("tiktok", cmd_tiktok))
     app.add_handler(CommandHandler("tiktok_campaigns", cmd_tiktok_campaigns))
     app.add_handler(CommandHandler("tiktok_campaign_status", cmd_tiktok_campaign_status))
