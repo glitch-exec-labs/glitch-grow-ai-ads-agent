@@ -1,6 +1,6 @@
 # Glitch Grow AI Ads Agent
 
-> **An AI ads agent for Shopify and e-commerce brands that plans, analyses, executes, and improves ROAS end-to-end** — across Shopify, Meta, Amazon, and TikTok, controllable from Telegram **or** Discord.
+> **An AI ads agent for Shopify and e-commerce brands that plans, analyses, executes, and improves ROAS end-to-end** — across Shopify, Meta, Amazon, TikTok, Google Ads, and LinkedIn Ads, controllable from Telegram **or** Discord.
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![LangGraph](https://img.shields.io/badge/orchestrator-LangGraph-orange)](https://github.com/langchain-ai/langgraph)
@@ -32,11 +32,32 @@ An **autonomous AI agent** that runs paid-media ops for a portfolio of e-commerc
 
 The human is the **supervisor**: sets constraints (budget caps, brand tone, approval thresholds), reviews the agent's proposed actions when they cross HITL gates, and gets delivered outcomes — not dashboards.
 
-Every decision the agent makes is grounded in real revenue math across three surfaces it ties together natively:
+Every decision the agent makes is grounded in real revenue math across the surfaces it ties together natively:
 
 - **Shopify** — per-store GMV, AOV, repeat-buyer cohorts, UTM coverage
-- **Meta Ads** — campaign/ad-set/ad-level spend + creative + destination URLs
-- **Amazon** — Seller Central orders, SP Ads performance, per-ASIN P&L, and Meta → Amazon cross-channel attribution (subtraction model where Amazon Attribution API is unavailable)
+- **Meta Ads** — campaign/ad-set/ad-level spend + creative + destination URLs (native Marketing API app)
+- **Amazon** — Seller Central orders, SP Ads performance, per-ASIN P&L, and Meta → Amazon cross-channel attribution (native Ads API on the brand's own LWA approval; our Glitch Grow partner-tier app is pending)
+- **TikTok Ads** — native Business API app: campaigns, ad-sets, ads, pixels, creative upload, Meta→TikTok port flow
+- **Google Ads** — native Google Ads API on our own MCC (`8008852484`). Clients link their account once; we read + write across the whole portfolio without per-tenant OAuth
+- **LinkedIn Ads** — native Marketing API app with elevated access already approved. Read + write campaigns, groups, analytics. Same pattern as Google: client adds our user via Manage Access, no fresh app approval needed on their end
+
+### Use it for your brand (managed-service offer)
+
+The agent currently runs production paid-media ops for **Ayurpet**
+across Shopify, Meta, Amazon, TikTok, Google Ads, and LinkedIn Ads.
+We're now opening it up: if you want the same agent operating your ad
+accounts under your supervision, reach out at
+<https://grow.glitchexecutor.com> · `support@glitchexecutor.com`.
+
+Onboarding is the same pattern across every platform — you grant our
+already-approved apps access to your accounts (Meta Business Manager
+partner add, Google MCC link, LinkedIn Manage Access, TikTok BC partner,
+Amazon LWA install) and we wire your store slug into the agent's
+`STORE_*_JSON` config files. **No fresh app approvals on your side, no
+waiting on platform review queues.** Your access can be revoked
+instantly from each platform's UI if you ever want to stop.
+
+---
 
 It answers the questions an ad ops manager would otherwise pay ₹50K-2L/month to a human for:
 
@@ -83,9 +104,20 @@ It answers the questions an ad ops manager would otherwise pay ₹50K-2L/month t
 - Every recommendation cites a stable check-ID (M01-M35) so week-over-week deltas are tractable.
 - 2025 platform-change awareness baked in: Andromeda creative-diversity (Oct 2025), iOS 14.5 dedup, link-clicks redefinition (Feb 2025), Offline Conversions API EOL, Threads GA, AEM v2.
 
-### TikTok integration
+### TikTok integration (native Business API app)
 - Read: `/tiktok`, `/tiktok_campaigns`, `/tiktok_pixels`, `/tiktok_campaign_status`, `/tiktok_campaign_budget`.
 - Write: `/port_meta_to_tiktok <meta_ad_id> <slug>` — extracts a winning Meta video, uploads to TikTok, creates campaign + adset + ad in DISABLED state with the right pixel optimization event auto-picked. `/enable_tiktok_launch <manifest_id>` flips it live after HITL review.
+
+### Google Ads integration (native API on our MCC)
+- Read: `/google_ads <store> [days]` — account totals, top campaigns by spend, zero-conversion search terms (negative-keyword candidates), per-keyword performance.
+- Write helpers: campaign budget + Search/Performance Max campaign creation, ad-group + keyword mutations (BROAD/PHRASE/EXACT). All EU-political-ad declaration handled.
+- Multi-tenant via MCC `8008852484` ("Glitch Grow"): client requests link from their Google Ads account → we approve → their `customer_id` goes into `STORE_GOOGLE_ADS_ACCOUNTS_JSON` → `/google_ads <slug>` works the next second.
+
+### LinkedIn Ads integration (native Marketing API app)
+- Read: `/linkedin_ads <store> [days]` — account totals, campaign roster, per-creative metrics via `/rest/adAnalytics`.
+- Write helpers: campaign-group + campaign creation with all the LinkedIn-specific gotchas codified (`politicalIntent`, $100 minimum totalBudget, runSchedule.start ≥ now, DRAFT-in-DRAFT cascade, restli URL encoding).
+- Multi-tenant via Campaign Manager → **Manage Access**: client adds our LinkedIn user as `CAMPAIGN_MANAGER` → their account_id goes into `STORE_LINKEDIN_ADS_ACCOUNTS_JSON` → live.
+- The same surface is published as a public MCP server at [glitch-grow-linkedin-ad-mcp](https://github.com/glitch-exec-labs/glitch-grow-linkedin-ad-mcp) so any MCP client (Claude Desktop, Cursor, your own agent) can use the LinkedIn Marketing API without going through their own approval queue.
 
 ### Per-brand playbook system
 - Tuned thresholds (`breakeven_roas`, `target_roas`, `target_cpa`) live in private playbooks per brand, not hardcoded in the engine. Ayurpet pet-supplements (1.6/2.8 breakeven/target) ≠ Urban apparel (2.2/3.5) ≠ Mokshya (2.0/3.2). Engine is brand-agnostic; calibration ships separately.
@@ -95,22 +127,23 @@ It answers the questions an ad ops manager would otherwise pay ₹50K-2L/month t
 
 ---
 
-## Four-repo fleet
+## Multi-repo fleet
 
 This agent doesn't hold every integration itself — it delegates per-platform
 work to sibling repos. Clean separation makes it easy to swap a data source
-(e.g. Amazon Supermetrics → native LWA) without redeploying the agent.
+without redeploying the agent.
 
 | Repo | Role | Port | Status |
 |---|---|---|---|
-| **glitch-grow-ai-ads-agent** (this repo) | LangGraph agent, Telegram + Discord transports, PostHog attribution, memory | `3110` | v2 live |
-| [glitch-ads-mcp](https://github.com/glitch-exec-labs/glitch-ads-mcp) | Meta Ads (fork of pipeboard's meta-ads-mcp) | `3103` | live |
-| [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) | Amazon Seller Central + Amazon Ads + attribution bridge. Runs in Supermetrics-fallback mode until LWA approval | `3105` | live (fallback mode) |
+| **glitch-grow-ai-ads-agent** (this repo) | LangGraph agent, Telegram + Discord transports, PostHog attribution, memory, native Google Ads + LinkedIn Ads + TikTok clients | `3110` | v2 live |
+| [glitch-ads-mcp](https://github.com/glitch-exec-labs/glitch-ads-mcp) | Meta Ads MCP (fork of pipeboard's meta-ads-mcp) | `3103` | live |
+| [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) | Amazon Seller Central + Amazon Ads + attribution bridge | `3105` | live (native LWA on Ayurpet's personal API access; our Glitch Grow partner-tier application pending) |
+| [glitch-grow-linkedin-ad-mcp](https://github.com/glitch-exec-labs/glitch-grow-linkedin-ad-mcp) | Public MCP server for LinkedIn Marketing API. Anyone can pip-install it and connect our hosted (already-approved) app to skip LinkedIn's Marketing API approval queue | n/a | public, MIT |
 | [glitch-discord-bot](https://github.com/glitch-exec-labs/glitch-discord-bot) | Guild slash commands + channel→JSON inbox fanout that the agent's Discord consumer reads | n/a | live |
 
-The agent **reads** TikTok via the official `business-api.tiktok.com` REST
-client (no separate sibling — the SDK we vendor is direct), and **writes**
-to Marketplace Ad Pros (MAP) for Amazon Ads management. ClickUp + Metabase
+TikTok and Google Ads + LinkedIn Ads are **in-process native clients** in
+this repo (`ads_agent/tiktok/`, `ads_agent/google_ads/`,
+`ads_agent/linkedin/`) — no separate sibling needed. ClickUp + Metabase
 are post-processing surfaces driven by ad-hoc scripts under `/tmp/`.
 
 ## Architecture
