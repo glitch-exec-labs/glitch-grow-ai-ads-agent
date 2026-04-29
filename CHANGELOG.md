@@ -13,6 +13,19 @@ Body text (if present) shown as indented sub-bullets.
 
 ## 2026-04-29
 
+- **21:00 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`7bad4ec`)
+- **21:00 UTC** — docs(readme): reflect new platform surface — Google Ads, LinkedIn Ads, native TikTok/Meta apps (`443bfec`) — 1 file
+    What changed since the last README pass:
+    - Native Google Ads (own MCC 8008852484) — read + write, multi-tenant
+      by client linking under our manager account
+    - Native LinkedIn Ads (Marketing API app with elevated access already
+      approved) — read + write, multi-tenant via Manage Access
+    - Native TikTok Business app, native Meta Marketing API app
+    - Amazon: now via brand's own LWA (Ayurpet personal); our Glitch Grow
+      partner-tier app application is pending. Removed "Supermetrics
+      fallback" wording — Supermetrics path is fully torn out
+    - New public sibling: glitch-grow-linkedin-ad-mcp (MIT) — anyone can
+- **20:45 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`956361a`) — 1 file
 - **20:42 UTC** — Merge branch 'main' of github.com:glitch-exec-labs/glitch-grow-ai-ads-agent (`b2a6511`)
 - **20:42 UTC** — feat(linkedin): write API helpers — campaign group + campaign creation, status updates (`c4692db`) — 2 files
     - mutations.py: create_campaign_group, create_campaign, update_*_status
