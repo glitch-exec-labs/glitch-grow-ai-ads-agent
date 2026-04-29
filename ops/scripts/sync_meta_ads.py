@@ -20,7 +20,7 @@ expected to pull last 30 days by default (overridable via --days).
 
 Rate limits: Meta's Marketing API is stingy. We bound concurrency (3 parallel
 accounts) and use one bulk /insights call per account per window — no
-per-ad fan-out — so a typical ayurpet sync is < 30s.
+per-ad fan-out — so a typical <client> sync is < 30s.
 """
 from __future__ import annotations
 
@@ -96,8 +96,8 @@ def _store_ad_accounts() -> dict[str, list[str]]:
 def _accounts_to_slugs() -> dict[str, list[str]]:
     """Invert STORE_AD_ACCOUNTS_JSON → {act_id: [slug, slug, ...]}.
 
-    A single Meta account can be shared across stores (e.g. Ayurpet's
-    act_654879327196107 drives both ayurpet-ind and ayurpet-global).
+    A single Meta account can be shared across stores (e.g. <client>'s
+    act_654879327196107 drives both store-a and store-b).
     """
     out: dict[str, list[str]] = {}
     for slug, accts in _store_ad_accounts().items():
@@ -211,7 +211,7 @@ async def sync_one_account(
     # Step 1 — fetch daily insights for last N days (one row per ad per day).
     # Insights-first: this surfaces only ads that actually spent in the window,
     # so subsequent creative fetches stay small. Bulk /{account}/ads hits Meta's
-    # payload cap on large accounts (Ayurpet: 'reduce the amount of data').
+    # payload cap on large accounts (<client>: 'reduce the amount of data').
     end = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
 

@@ -167,8 +167,8 @@ STORE_TIKTOK_ACCOUNTS: dict[str, dict] = _load_store_tiktok_accounts()
 #
 # Shape of STORE_GA4_STREAMS_JSON env var:
 #   {
-#     "ayurpet-ind":    {"property_id": "484508586", "stream_id": "10481705777"},
-#     "ayurpet-global": {"property_id": "484508586", "stream_id": "14412103683"}
+#     "<client>-ind":    {"property_id": "484508586", "stream_id": "10481705777"},
+#     "<client>-global": {"property_id": "484508586", "stream_id": "14412103683"}
 #   }
 #
 # property_id  — GA4 property number (shared between IN + Global under AYURPET)
@@ -211,11 +211,11 @@ STORE_GA4_STREAMS: dict[str, dict[str, str]] = _load_store_ga4_streams()
 #
 # Shape of STORE_MAP_ACCOUNTS_JSON env var:
 #   {
-#     "ayurpet-ind":    {"integration_id": "<uuid>", "account_id": "<uuid>", "country": "IN"},
-#     "ayurpet-global": {"integration_id": "<uuid>", "account_id": "<uuid>", "country": "AE"}
+#     "<client>-ind":    {"integration_id": "<uuid>", "account_id": "<uuid>", "country": "IN"},
+#     "<client>-global": {"integration_id": "<uuid>", "account_id": "<uuid>", "country": "AE"}
 #   }
 #
-# Only primary-market mapping today. Multi-market stores (ayurpet-global
+# Only primary-market mapping today. Multi-market stores (<client>-global
 # covers AE + UK + IE + ES + PL) pick the dominant ad-spend market as
 # primary; other markets can be queried via /amazon_recs <slug> <country>
 # with an explicit country override.

@@ -208,7 +208,7 @@ async def api_amazon_consent_url(request: Request) -> dict:
     Gated by the same AGENT_RUN_TOKEN bearer as /agent/run (admin-only).
     Query params:
       account_ref — logical key for which advertiser this consent is for
-                    (e.g. "ayurpet", "nuraveda-self"). Required.
+                    (e.g. "<client>", "nuraveda-self"). Required.
       notes       — optional free-text to label the state row.
 
     Returns {url: "...", state_expires_in_seconds: 600}.

@@ -5,7 +5,7 @@ Recipes intentionally name the specific file/admin-panel location to edit so
 the operator can act without further investigation.
 
 **Checkout-topology matters**: recipes differ between brands depending on
-whether checkout is native-Shopify (Ayurpet, Mokshya) or 3rd-party-hosted
+whether checkout is native-Shopify (<client>, Mokshya) or 3rd-party-hosted
 (Urban family: Classicoo/Storico on Shiprocket; Urban Classics/Trendsetters
 on Flexipe). The `recipe_for()` helper selects the right variant based on
 store slug; nodes should call it instead of indexing RECIPES directly.
@@ -69,7 +69,7 @@ _RECIPES_3PARTY_CHECKOUT: dict[str, str] = {
 
 
 # Brands with native Shopify checkout + Shopify Facebook & Instagram sales
-# channel handling pixel + CAPI (Ayurpet, Mokshya, etc.). No 3rd-party
+# channel handling pixel + CAPI (<client>, Mokshya, etc.). No 3rd-party
 # redirect; Meta events flow via the Shopify FB channel app.
 _RECIPES_SHOPIFY_NATIVE: dict[str, str] = {
     "low_utm_coverage": (

@@ -1,4 +1,4 @@
-"""Playbook loader — exposes the Ayurpet (or per-brand) playbook to LLM nodes
+"""Playbook loader — exposes the <client> (or per-brand) playbook to LLM nodes
 and rule engines.
 
 Why a loader: the playbook is a markdown file under /playbooks. At runtime,

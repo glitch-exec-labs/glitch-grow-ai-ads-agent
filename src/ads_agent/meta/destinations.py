@@ -11,7 +11,7 @@ Why we do this:
   - Meta has no visibility into Amazon orders, so any Amazon-destined ad
     structurally reads `omni_purchase = 0` in the Graph API insights —
     Meta-reported ROAS on those ads is a floor, not the truth.
-  - A brand-tuned audit (e.g. Ayurpet's) needs to identify Amazon ads
+  - A brand-tuned audit (e.g. <client>'s) needs to identify Amazon ads
     and use the cross-channel halo number from
     `ads_agent.amazon_attribution_daily_v` instead of Meta-ROAS, then
     propose `RECLAIM` rather than `PAUSE`.
@@ -38,7 +38,7 @@ _ASIN_RE = re.compile(r"/(?:dp|gp/product|product)/([A-Z0-9]{10})(?:[/?]|$)")
 #     Shopify but name not updated — common operational drift)
 # Used together with classify_destination() for cross-evidence.
 # `amazon` and `amzn` are unique enough tokens that we don't enforce word
-# boundaries — Ayurpet names like `HOJ_Luna_NewAmazon` and `_amazon_uae`
+# boundaries — <client> names like `HOJ_Luna_NewAmazon` and `_amazon_uae`
 # mix them into compound names. False positives on these tokens in normal
 # English ad copy are rare. `amz` alone IS too generic; require a separator
 # (`amz_`, `amz-`, `_amz`, `-amz`) so we don't fire on "amzanything".

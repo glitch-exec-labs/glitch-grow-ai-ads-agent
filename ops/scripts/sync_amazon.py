@@ -6,12 +6,12 @@ MCP JSON-RPC client, and upserts rows into ads_agent.amazon_daily.
 Typical use:
     python ops/scripts/sync_amazon.py                   # all stores, last 7 days
     python ops/scripts/sync_amazon.py --days 30         # widen window
-    python ops/scripts/sync_amazon.py --store ayurpet-ind
+    python ops/scripts/sync_amazon.py --store store-a
     python ops/scripts/sync_amazon.py --dry-run         # print what would happen
 
 Why a cron and not live queries:
     Each Supermetrics Amazon Ads query takes 2-3 min (Amazon async Reports API).
-    9 accounts for ayurpet-global takes ~6-8 min even parallel. Inline Telegram
+    9 accounts for store-b takes ~6-8 min even parallel. Inline Telegram
     replies are infeasible; caching is the only viable UX pattern.
 
 On OAuth expiry (`QUERY_AUTH_UNAVAILABLE`):

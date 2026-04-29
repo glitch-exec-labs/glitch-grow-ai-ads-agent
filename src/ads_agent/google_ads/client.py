@@ -116,9 +116,9 @@ def _store_accounts_map() -> dict[str, str]:
     """Parse STORE_GOOGLE_ADS_ACCOUNTS_JSON.
 
     Shape:
-      {"ayurpet-ind": {"customer_id": "1234567890"}, ...}
+      {"<client>-ind": {"customer_id": "1234567890"}, ...}
     or shorter:
-      {"ayurpet-ind": "1234567890", ...}
+      {"<client>-ind": "1234567890", ...}
     """
     raw = os.environ.get("STORE_GOOGLE_ADS_ACCOUNTS_JSON", "").strip()
     if not raw:

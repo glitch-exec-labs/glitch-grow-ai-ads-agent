@@ -199,7 +199,7 @@ class MetaAccountHierarchy:
     # both miss.
     destination_mismatches: dict = field(default_factory=dict)
     # Amazon halo at account + per-ASIN level. Populated only when the
-    # store has STORE_MAP_ACCOUNTS configured (today: Ayurpet only).
+    # store has STORE_MAP_ACCOUNTS configured (today: <client> only).
     # Empty dict for brands without — analyst then ignores the halo
     # rules and applies the standard Meta-ROAS methodology.
     amazon_halo: dict = field(default_factory=dict)
@@ -249,7 +249,7 @@ async def decompose_meta_account(
 
     `store_slug` is the agent's store key — used to look up
     STORE_MAP_ACCOUNTS for the Amazon halo. Pass None to skip the halo
-    pull entirely (engine stays brand-neutral; Ayurpet's audit gets the
+    pull entirely (engine stays brand-neutral; <client>'s audit gets the
     halo, others see an empty dict).
     """
     t0 = time.time()
@@ -524,7 +524,7 @@ async def decompose_meta_account(
     }
 
     # Amazon halo — only fires for slugs configured in STORE_MAP_ACCOUNTS
-    # (today: ayurpet-ind, ayurpet-global). Other brands get an empty dict
+    # (today: <client>-ind, <client>-global). Other brands get an empty dict
     # and their analyst prompt won't reference the halo at all.
     halo = await _amazon_halo_for_slug(store_slug, days)
 
@@ -624,7 +624,7 @@ async def _amazon_halo_for_slug(store_slug: str | None, days: int) -> dict:
     """Pull Meta→Amazon halo for a store at account + per-ASIN level.
 
     Empty dict if the store isn't configured for MAP (i.e. no Amazon
-    integration). Today this fires for Ayurpet IND + Global; other
+    integration). Today this fires for <client> IND + Global; other
     brands return {} and the analyst doesn't see this block at all.
 
     Reads from `ads_agent.amazon_attribution_daily_v` which is the same
@@ -649,7 +649,7 @@ async def _amazon_halo_for_slug(store_slug: str | None, days: int) -> dict:
     try:
         # meta_attributed_gross_inr is the ALREADY-INR-NORMALISED column the
         # attribution view exposes; meta_spend is also INR. Using the
-        # native-currency `meta_attributed_gross` (e.g. AED for ayurpet-global)
+        # native-currency `meta_attributed_gross` (e.g. AED for <client>-global)
         # against an INR spend gives a fake near-zero halo. INR_INR matters.
         agg = await conn.fetchrow(
             """SELECT

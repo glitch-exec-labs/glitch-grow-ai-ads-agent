@@ -7,7 +7,7 @@ for backfill are harmless (they carry the same order_id so you can dedupe in SQL
 
 Usage:
     python ops/scripts/backfill_posthog.py --store urban --days 90
-    python ops/scripts/backfill_posthog.py --store ayurpet-ind --days 90
+    python ops/scripts/backfill_posthog.py --store store-a --days 90
     python ops/scripts/backfill_posthog.py --all --days 90
 
 Requires:
@@ -189,7 +189,7 @@ async def main(slugs: list[str], days: int) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Backfill Shopify orders into PostHog")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--store", help="Store slug (e.g. urban, ayurpet-ind)")
+    group.add_argument("--store", help="Store slug (e.g. urban, store-a)")
     group.add_argument("--all", action="store_true", help="Backfill all configured stores")
     parser.add_argument("--days", type=int, default=90, help="Lookback window in days (default 90)")
     args = parser.parse_args()

@@ -46,7 +46,7 @@ def _ccy_for(country: str) -> str:
 
 
 def _brand_for(slug: str) -> str:
-    """Map store_slug → brand name for playbook lookup. Ayurpet's two
+    """Map store_slug → brand name for playbook lookup. <client>'s two
     slugs share the same brand."""
     if slug.startswith("ayurpet"): return "ayurpet"
     if slug == "mokshya":          return "mokshya"

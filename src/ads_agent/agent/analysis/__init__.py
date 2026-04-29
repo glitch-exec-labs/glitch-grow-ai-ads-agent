@@ -6,7 +6,7 @@ The goal of this package is to separate *what data the analyst sees* from
   - `campaign_decomposer.py` pulls the full parent→children tree for a
     given ad object (SP campaign, Meta campaign, …) and computes
     concentration ratios so the analyst doesn't have to.
-  - Methodology prompts live in `playbooks/ayurpet.md` Section X and are
+  - Methodology prompts live in `playbooks/<client>.md` Section X and are
     injected into the LLM call by each analysis node.
 
 Design premise: the dumb output we shipped before (e.g. "pause campaign

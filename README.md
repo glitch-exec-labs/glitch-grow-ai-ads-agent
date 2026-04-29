@@ -43,7 +43,7 @@ Every decision the agent makes is grounded in real revenue math across the surfa
 
 ### Use it for your brand (managed-service offer)
 
-The agent currently runs production paid-media ops for **Ayurpet**
+The agent currently runs production paid-media ops for our **lighthouse client**
 across Shopify, Meta, Amazon, TikTok, Google Ads, and LinkedIn Ads.
 We're now opening it up: if you want the same agent operating your ad
 accounts under your supervision, reach out at
@@ -94,7 +94,7 @@ It answers the questions an ad ops manager would otherwise pay ₹50K-2L/month t
 - Nightly consolidation cron scores memories on relevance/frequency/diversity/recency/consolidation and promotes durable lessons to per-brand `MEMORY.md` files loaded as system prompt context
 
 ### Dual transport: Telegram + Discord
-- Same agent core, two control planes. Diagnostic commands and write-action approvals work from either Telegram (`@GlitchGrowAdsBot`) or Discord (`#grow-ads`, plus per-client channels like `#glitch-x-ayurpet`).
+- Same agent core, two control planes. Diagnostic commands and write-action approvals work from either Telegram (`@GlitchGrowAdsBot`) or Discord (`#grow-ads`, plus per-client channels like `#glitch-x-<client>`).
 - Action proposals **dual-post** with Approve/Reject buttons; either side resolves the row atomically and strips buttons on the other (first-click-wins via DB-level constraint).
 - Discord lets clients self-serve audits (`/insights`, `/amazon_recs`, `/meta_audit`) without giving them ops-team access. Per-channel approver allowlists keep write authority scoped.
 
@@ -120,7 +120,7 @@ It answers the questions an ad ops manager would otherwise pay ₹50K-2L/month t
 - The same surface is published as a public MCP server at [glitch-grow-linkedin-ad-mcp](https://github.com/glitch-exec-labs/glitch-grow-linkedin-ad-mcp) so any MCP client (Claude Desktop, Cursor, your own agent) can use the LinkedIn Marketing API without going through their own approval queue.
 
 ### Per-brand playbook system
-- Tuned thresholds (`breakeven_roas`, `target_roas`, `target_cpa`) live in private playbooks per brand, not hardcoded in the engine. Ayurpet pet-supplements (1.6/2.8 breakeven/target) ≠ Urban apparel (2.2/3.5) ≠ Mokshya (2.0/3.2). Engine is brand-agnostic; calibration ships separately.
+- Tuned thresholds (`breakeven_roas`, `target_roas`, `target_cpa`) live in private playbooks per brand, not hardcoded in the engine. Lighthouse client (1.6/2.8 breakeven/target) ≠ Urban apparel (2.2/3.5) ≠ Mokshya (2.0/3.2). Engine is brand-agnostic; calibration ships separately.
 
 ### Proactive alerts
 - CPC drift, match-rate drop > 20% d/d, ROAS drop > 30% w/w, zero-purchase burners, premature-kill bias warnings, daily 07:00 IST digest per store.
@@ -137,7 +137,7 @@ without redeploying the agent.
 |---|---|---|---|
 | **glitch-grow-ai-ads-agent** (this repo) | LangGraph agent, Telegram + Discord transports, PostHog attribution, memory, native Google Ads + LinkedIn Ads + TikTok clients | `3110` | v2 live |
 | [glitch-ads-mcp](https://github.com/glitch-exec-labs/glitch-ads-mcp) | Meta Ads MCP (fork of pipeboard's meta-ads-mcp) | `3103` | live |
-| [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) | Amazon Seller Central + Amazon Ads + attribution bridge | `3105` | live (native LWA on Ayurpet's personal API access; our Glitch Grow partner-tier application pending) |
+| [amazon-ads-mcp](https://github.com/glitch-exec-labs/amazon-ads-mcp) | Amazon Seller Central + Amazon Ads + attribution bridge | `3105` | live (native LWA on a brand's personal API access; our Glitch Grow partner-tier application pending) |
 | [glitch-grow-linkedin-ad-mcp](https://github.com/glitch-exec-labs/glitch-grow-linkedin-ad-mcp) | Public MCP server for LinkedIn Marketing API. Anyone can pip-install it and connect our hosted (already-approved) app to skip LinkedIn's Marketing API approval queue | n/a | public, MIT |
 | [glitch-discord-bot](https://github.com/glitch-exec-labs/glitch-discord-bot) | Guild slash commands + channel→JSON inbox fanout that the agent's Discord consumer reads | n/a | live |
 

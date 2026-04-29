@@ -6,7 +6,7 @@ as Approve/Reject prompts.
 
 Usage:
     python ops/scripts/run_action_planner.py               # all enabled stores
-    python ops/scripts/run_action_planner.py --store ayurpet-ind
+    python ops/scripts/run_action_planner.py --store store-a
     python ops/scripts/run_action_planner.py --dry-run     # log only, no writes/posts
 """
 from __future__ import annotations
@@ -32,8 +32,8 @@ log = logging.getLogger("action_planner")
 # Map store_slug → telegram chat_id for approval prompts.
 # When a second client onboards, move this into STORES config.
 STORE_APPROVAL_CHATS: dict[str, int] = {
-    "ayurpet-ind":    AYURPET_CHAT_ID,
-    "ayurpet-global": AYURPET_CHAT_ID,  # same group serves both stores
+    "store-a":    AYURPET_CHAT_ID,
+    "store-b": AYURPET_CHAT_ID,  # same group serves both stores
 }
 
 

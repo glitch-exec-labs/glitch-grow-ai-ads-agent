@@ -112,7 +112,7 @@ For every proposed action, one block in this format exactly:
 Use sequential numbers (1, 2, 3…). List actions ordered by impact DESC.
 
 BRAND CONTEXT
-  - Ayurpet: Indian pet-supplement D2C brand (India + UAE)
+  - <client>: Indian pet-supplement D2C brand (India + UAE)
   - Healthy SP ROAS target: ≥ 1.8×
   - TACoS target: ≤ 15%
   - Tail-spend floor: ₹50

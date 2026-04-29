@@ -6,8 +6,8 @@ falls back to the original AYURPET_CHAT_ID Telegram-only behaviour if unset.
 
 env shape:
   STORE_PROPOSAL_TARGETS_JSON = {
-    "ayurpet-ind":    {"telegram_chat_id": -100..., "discord_channel_id": 1497086918012309565},
-    "ayurpet-global": {"telegram_chat_id": -100..., "discord_channel_id": 1497086918012309565},
+    "<client>-ind":    {"telegram_chat_id": -100..., "discord_channel_id": 1497086918012309565},
+    "<client>-global": {"telegram_chat_id": -100..., "discord_channel_id": 1497086918012309565},
     "urban":          {"discord_channel_id": 1497089775486631946}
   }
 
@@ -73,7 +73,7 @@ _TARGETS: dict[str, ProposalTarget] | None = None
 def proposal_target(slug: str) -> ProposalTarget | None:
     """Return the ProposalTarget for a slug, or None if not configured.
 
-    Falls back to legacy AYURPET_CHAT_ID for ayurpet-* if the env var is
+    Falls back to legacy AYURPET_CHAT_ID for <client>-* if the env var is
     unset, so a fresh deploy of just this code without env updates still
     posts to Telegram exactly as before.
     """
@@ -85,7 +85,7 @@ def proposal_target(slug: str) -> ProposalTarget | None:
     if cfg and cfg.has_any:
         return cfg
 
-    # Legacy fallback — keep ayurpet on Telegram if env not configured
+    # Legacy fallback — keep <client> on Telegram if env not configured
     if slug.startswith("ayurpet"):
         try:
             from ads_agent.actions.models import AYURPET_CHAT_ID
@@ -110,7 +110,7 @@ def configured_slugs() -> list[str]:
     if _TARGETS is None:
         _TARGETS = _load_from_env()
     out = list(_TARGETS.keys())
-    # Always include ayurpet-* if AYURPET_CHAT_ID is reachable (back-compat)
+    # Always include <client>-* if AYURPET_CHAT_ID is reachable (back-compat)
     for slug in ("ayurpet-ind", "ayurpet-global"):
         if slug not in out and proposal_target(slug):
             out.append(slug)

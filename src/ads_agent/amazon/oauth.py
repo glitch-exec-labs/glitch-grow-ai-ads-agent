@@ -3,7 +3,7 @@
 Five-step flow coordinated across our FastAPI server and the Cloudflare
 Pages Function at grow.glitchexecutor.com/amazon/oauth/callback:
 
-  1. Operator hits our agent: GET /api/amazon/consent-url?account_ref=ayurpet
+  1. Operator hits our agent: GET /api/amazon/consent-url?account_ref=<client>
   2. Agent generates a random `state`, persists in ads_agent.amazon_oauth_state
      with 10-min TTL, returns a clickable amazon.com/ap/oa URL.
   3. Operator opens URL → Amazon shows "Allow this app to access your Ads
